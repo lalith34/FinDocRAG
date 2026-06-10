@@ -6,8 +6,6 @@ Requires indexes built first (python -m scripts.build_index).
 """
 from __future__ import annotations
 
-import hmac
-
 import streamlit as st
 
 import config
@@ -16,26 +14,6 @@ from src.telemetry import log_feedback, setup_logging
 
 setup_logging()
 st.set_page_config(page_title="Financial Filings RAG", page_icon="📑", layout="wide")
-
-
-def check_password() -> bool:
-    if not config.APP_PASSWORD:
-        return True
-    if st.session_state.get("authed"):
-        return True
-    st.title("📑 Financial Document Intelligence")
-    pw = st.text_input("Password", type="password")
-    if pw:
-        if hmac.compare_digest(pw, config.APP_PASSWORD):
-            st.session_state["authed"] = True
-            st.rerun()
-        else:
-            st.error("Wrong password")
-    return False
-
-
-if not check_password():
-    st.stop()
 
 
 @st.cache_resource(show_spinner=False)
@@ -85,8 +63,6 @@ with st.sidebar:
         st.warning("OPENAI_API_KEY not set — generation will fail. Add it to .env.")
     if not config.PINECONE_API_KEY:
         st.warning("PINECONE_API_KEY not set — retrieval will fail. Add it to .env.")
-    if not config.APP_PASSWORD:
-        st.warning("APP_PASSWORD not set — UI is open (dev mode).")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []

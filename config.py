@@ -87,10 +87,6 @@ PINECONE_BATCH_SIZE = 100
 # Local ONNX cross-encoder (fastembed); no torch, works on Intel macOS.
 RERANK_ONNX_MODEL = os.getenv("RERANK_ONNX_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
 
-# --- App -----------------------------------------------------------------------
-# Shared password for the Streamlit UI. Unset = open access (dev mode).
-APP_PASSWORD = os.getenv("APP_PASSWORD")
-
 # --- Chunking ----------------------------------------------------------------
 # Fixed-size strategy (token based). 800 tokens pairs well with a 1536-dim model.
 FIXED_CHUNK_TOKENS = 800

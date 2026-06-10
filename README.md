@@ -33,9 +33,8 @@ cp .env.example .env        # then add your OPENAI_API_KEY and PINECONE_API_KEY
 ```
 
 Required keys (see [.env.example](.env.example)): `OPENAI_API_KEY` (embeddings +
-generation), `PINECONE_API_KEY` (dense vector store). Optional: `APP_PASSWORD`
-gates the Streamlit UI (unset = open dev mode); the reranker runs locally from a
-one-time ~90MB ONNX model download, no key needed.
+generation), `PINECONE_API_KEY` (dense vector store). The reranker runs locally
+from a one-time ~90MB ONNX model download, no key needed.
 
 ## Run
 

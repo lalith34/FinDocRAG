@@ -1,19 +1,22 @@
 """Orchestration: build the indexes and answer queries end-to-end.
 
-Build:  ingest -> chunk (per strategy) -> embed -> persist vector store.
-Query:  hybrid retrieve -> (optional) rerank -> cited generation.
+Build:  ingest (incremental by EDGAR accession) -> chunk changed tickers ->
+        embed -> upsert to Pinecone -> refresh local chunks.json snapshot.
+Query:  hybrid retrieve (Pinecone dense + local BM25) -> cross-encoder rerank ->
+        cited generation, with a per-query telemetry trace.
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 import config
-from . import embeddings, ingest
+from . import embeddings, ingest, telemetry
 from .chunking import Chunk, chunk_document
 from .generate import Answer, generate
 from .rerank import rerank
-from .vectorstore import VectorStore
+from .vectorstore import PineconeStore
 
 # Conversational inputs that should be answered directly instead of triggering a
 # retrieval (otherwise "hi" pulls random chunks and the generator refuses).
@@ -45,9 +48,15 @@ def is_smalltalk(query: str) -> bool:
 
 
 # --- Build -------------------------------------------------------------------
-def build_indexes(strategies=config.STRATEGIES, *, do_ingest: bool = True) -> dict:
+def build_indexes(
+    strategies=config.STRATEGIES, *, do_ingest: bool = True, force: bool = False
+) -> dict:
     if do_ingest:
-        ingest.ingest_all()
+        ingest_results = ingest.ingest_all(force=force)
+        changed_tickers = {t for t, (_, changed) in ingest_results.items() if changed}
+    else:
+        changed_tickers = set(config.COMPANIES)
+
     docs = ingest.load_processed()
     if not docs:
         raise RuntimeError("No processed documents found. Run ingestion first.")
@@ -55,8 +64,17 @@ def build_indexes(strategies=config.STRATEGIES, *, do_ingest: bool = True) -> di
     summary = {}
     for strategy in strategies:
         print(f"\n=== Building '{strategy}' index ===")
-        all_chunks: list[Chunk] = []
-        for ticker, payload in docs.items():
+        store = PineconeStore(strategy)
+
+        # First build (no local snapshot) or --force: rebuild everything.
+        rebuild = set(changed_tickers)
+        if force or not store.chunks:
+            rebuild = set(docs)
+
+        kept = [c for c in store.chunks if c.ticker not in rebuild]
+        new_chunks: list[Chunk] = []
+        for ticker in sorted(rebuild):
+            payload = docs[ticker]
             meta = payload["meta"]
             chunks = chunk_document(
                 ticker=ticker,
@@ -67,19 +85,27 @@ def build_indexes(strategies=config.STRATEGIES, *, do_ingest: bool = True) -> di
                 embed_fn=embeddings.embed_texts if strategy == "semantic" else None,
             )
             print(f"  {ticker}: {len(chunks)} chunks")
-            all_chunks.extend(chunks)
+            new_chunks.extend(chunks)
 
-        print(f"  embedding {len(all_chunks)} chunks ...")
-        vecs = embeddings.embed_texts([c.text for c in all_chunks])
-        store = VectorStore(strategy, all_chunks, vecs)
-        store.save()
+        if new_chunks:
+            print(f"  embedding {len(new_chunks)} chunks ...")
+            vecs = embeddings.embed_texts([c.text for c in new_chunks])
+            for ticker in sorted(rebuild):
+                store.delete_ticker(ticker)
+            store.upsert(new_chunks, vecs)
+        else:
+            print("  no tickers changed; index up to date")
+
+        all_chunks = kept + new_chunks
+        store.save_chunks(all_chunks)
         summary[strategy] = {
             "chunks": len(all_chunks),
+            "rebuilt_tickers": sorted(rebuild) if new_chunks else [],
             "avg_tokens": round(
                 sum(c.token_count for c in all_chunks) / max(1, len(all_chunks)), 1
             ),
         }
-        print(f"  saved -> data/index/{strategy}/")
+        print(f"  snapshot -> data/index/{strategy}/chunks.json")
     return summary
 
 
@@ -91,17 +117,17 @@ class RAGResult:
     retrieved: list[Chunk]
     strategy: str
     reranked: bool
+    trace: telemetry.QueryTrace | None = field(default=None)
 
 
 class RAGPipeline:
     def __init__(self, strategy: str = "semantic"):
         self.strategy = strategy
-        self.store = VectorStore.load(strategy)
+        self.store = PineconeStore(strategy)
 
     def retrieve(self, query: str, k: int = config.RETRIEVE_K) -> list[Chunk]:
         qvec = embeddings.embed_query(query)
-        hits = self.store.hybrid(query, qvec, k)
-        return [self.store.get(i) for i, _ in hits]
+        return [c for c, _ in self.store.hybrid(query, qvec, k)]
 
     def answer(
         self,
@@ -119,16 +145,46 @@ class RAGPipeline:
                 reranked=False,
             )
 
+        t0 = time.perf_counter()
         candidates = self.retrieve(query, config.RETRIEVE_K)
+        t1 = time.perf_counter()
         if use_rerank:
-            top = [c for c, _ in rerank(query, candidates, top_k)]
+            reranked_pairs = rerank(query, candidates, top_k)
+            top = [c for c, _ in reranked_pairs]
         else:
             top = candidates[:top_k]
+        t2 = time.perf_counter()
         ans = generate(query, top)
+        t3 = time.perf_counter()
+
+        trace = telemetry.QueryTrace(
+            query=query,
+            strategy=self.strategy,
+            reranked=use_rerank,
+            refused=ans.refused,
+            candidates=[{"chunk_id": c.chunk_id} for c in top],
+            retrieval_ms=round((t1 - t0) * 1000, 1),
+            rerank_ms=round((t2 - t1) * 1000, 1),
+            generation_ms=round((t3 - t2) * 1000, 1),
+            total_ms=round((t3 - t0) * 1000, 1),
+            prompt_tokens=ans.usage.get("prompt_tokens", 0),
+            completion_tokens=ans.usage.get("completion_tokens", 0),
+            est_cost_usd=round(
+                telemetry.estimate_cost(
+                    config.CHAT_MODEL,
+                    ans.usage.get("prompt_tokens", 0),
+                    ans.usage.get("completion_tokens", 0),
+                ),
+                6,
+            ),
+        )
+        telemetry.log_query(trace)
+
         return RAGResult(
             query=query,
             answer=ans,
             retrieved=top,
             strategy=self.strategy,
             reranked=use_rerank,
+            trace=trace,
         )

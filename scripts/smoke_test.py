@@ -1,6 +1,7 @@
 """Offline smoke test: exercises every code path that does NOT require an API
 key — ingestion/cleaning, both chunkers (semantic uses a deterministic fake
-embedder), and dense/sparse/hybrid retrieval over the vector store.
+embedder), BM25 sparse retrieval, and RRF fusion. Pinecone dense retrieval is
+covered by the online eval, not here.
 
 Run after ingestion:  python -m scripts.smoke_test
 """
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 import config  # noqa: E402
 from src import ingest  # noqa: E402
 from src.chunking import chunk_document  # noqa: E402
-from src.vectorstore import VectorStore  # noqa: E402
+from src.vectorstore import rrf_fuse, _tokenize  # noqa: E402
 
 DIM = 64
 
@@ -56,18 +57,21 @@ def main():
         assert fixed and semantic, f"{ticker} produced no chunks"
         all_chunks.extend(fixed)
 
-    # Build a store with fake embeddings and test all three retrieval modes.
-    vecs = fake_embed([c.text for c in all_chunks])
-    store = VectorStore("fixed", all_chunks, vecs)
+    # BM25 sparse retrieval over the chunks, no network.
+    from rank_bm25 import BM25Okapi
+
+    bm25 = BM25Okapi([_tokenize(c.text) for c in all_chunks])
     q = "What were total net sales and revenue?"
-    qv = fake_embed([q])[0]
-    dense = store.dense(qv, 5)
-    sparse = store.sparse(q, 5)
-    hybrid = store.hybrid(q, qv, 5)
-    assert len(dense) == 5 and len(sparse) == 5 and len(hybrid) == 5
-    print(f"\nRetrieval OK — dense/sparse/hybrid each returned 5 hits over "
-          f"{len(all_chunks)} chunks.")
-    print("Top hybrid hit:", store.get(hybrid[0][0]).chunk_id)
+    scores = bm25.get_scores(_tokenize(q))
+    sparse_ids = [all_chunks[int(i)].chunk_id for i in np.argsort(-scores)[:5]]
+    assert len(sparse_ids) == 5
+
+    # RRF fusion is a pure function — fuse sparse with a shuffled copy.
+    fused = rrf_fuse([sparse_ids, list(reversed(sparse_ids))], 5)
+    assert len(fused) == 5 and fused[0][1] > 0
+    print(f"\nRetrieval OK — BM25 returned 5 hits over {len(all_chunks)} chunks; "
+          f"RRF fused cleanly.")
+    print("Top sparse hit:", sparse_ids[0])
     print("\nSMOKE_TEST_PASSED")
 
 

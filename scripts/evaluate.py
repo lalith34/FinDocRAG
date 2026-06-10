@@ -26,33 +26,13 @@ sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
 from src import embeddings  # noqa: E402
-from src.chunking import Chunk  # noqa: E402
+from src.eval_utils import rank_metrics  # noqa: E402
 from src.generate import generate  # noqa: E402
+from src.reliability import make_openai_client, openai_retry  # noqa: E402
 from src.rerank import rerank  # noqa: E402
-from src.vectorstore import VectorStore  # noqa: E402
+from src.vectorstore import PineconeStore  # noqa: E402
 
 TOP_K = config.TOP_K
-
-
-# --- labelling ---------------------------------------------------------------
-def is_relevant(chunk: Chunk, query: dict) -> bool:
-    if chunk.ticker not in query["expected_tickers"]:
-        return False
-    text = chunk.text.lower()
-    return any(kw.lower() in text for kw in query["must_contain"])
-
-
-def rank_metrics(chunks: list[Chunk], query: dict, k: int = TOP_K) -> dict:
-    top = chunks[:k]
-    rels = [is_relevant(c, query) for c in top]
-    hit = 1.0 if any(rels) else 0.0
-    mrr = 0.0
-    for rank, r in enumerate(rels):
-        if r:
-            mrr = 1.0 / (rank + 1)
-            break
-    precision = sum(rels) / k
-    return {"hit": hit, "mrr": mrr, "precision": precision}
 
 
 def avg(rows: list[dict], key: str) -> float:
@@ -71,22 +51,24 @@ _JUDGE_SYS = (
 
 
 def judge_answer(question: str, answer_text: str, sources_text: str) -> dict:
-    from openai import OpenAI
+    client = make_openai_client()
 
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    resp = client.chat.completions.create(
-        model=config.CHAT_MODEL,
-        temperature=0,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": _JUDGE_SYS},
-            {
-                "role": "user",
-                "content": f"QUESTION:\n{question}\n\nSOURCES:\n{sources_text}\n\nANSWER:\n{answer_text}",
-            },
-        ],
-    )
-    return json.loads(resp.choices[0].message.content)
+    @openai_retry
+    def _call():
+        return client.chat.completions.create(
+            model=config.CHAT_MODEL,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _JUDGE_SYS},
+                {
+                    "role": "user",
+                    "content": f"QUESTION:\n{question}\n\nSOURCES:\n{sources_text}\n\nANSWER:\n{answer_text}",
+                },
+            ],
+        )
+
+    return json.loads(_call().choices[0].message.content)
 
 
 # --- main --------------------------------------------------------------------
@@ -105,11 +87,11 @@ def main():
     rerank_rows = {}  # strategy -> reranked metric rows
 
     for strategy in args.strategies:
-        store = VectorStore.load(strategy)
+        store = PineconeStore(strategy)
         base, reranked = [], []
         for q in answerable:
             qvec = embeddings.embed_query(q["question"])
-            pool = [store.get(i) for i, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
+            pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
             base.append(rank_metrics(pool, q, TOP_K))
             rr = [c for c, _ in rerank(q["question"], pool, TOP_K)]
             reranked.append(rank_metrics(rr, q, TOP_K))
@@ -122,10 +104,10 @@ def main():
     refusal_results = []
     if not args.no_judge:
         gen_strategy = args.strategies[-1]  # judge on the richer/last strategy
-        store = VectorStore.load(gen_strategy)
+        store = PineconeStore(gen_strategy)
         for q in answerable:
             qvec = embeddings.embed_query(q["question"])
-            pool = [store.get(i) for i, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
+            pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
             top = [c for c, _ in rerank(q["question"], pool, TOP_K)]
             ans = generate(q["question"], top)
             src_text = "\n\n".join(f"[{i+1}] {c.text}" for i, c in enumerate(top))
@@ -136,7 +118,7 @@ def main():
 
         for q in refusal_qs:
             qvec = embeddings.embed_query(q["question"])
-            pool = [store.get(i) for i, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
+            pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
             top = [c for c, _ in rerank(q["question"], pool, TOP_K)]
             ans = generate(q["question"], top)
             refusal_results.append((q["id"], ans.refused))

@@ -1,17 +1,26 @@
 # Core
-openai>=1.40
-python-dotenv>=1.0
-numpy>=1.26
-pandas>=2.0
-tiktoken>=0.7
+openai==2.41.0
+python-dotenv==1.2.2
+numpy==2.4.6
+pandas==3.0.3
+tiktoken==0.13.0
+tenacity==9.1.4
 
 # Ingestion / cleaning
-requests>=2.31
-beautifulsoup4>=4.12
-lxml>=5.0
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.1
 
 # Retrieval
-rank-bm25>=0.2.2
+pinecone==9.1.0
+rank-bm25==0.2.2
+
+# Reranking (ONNX cross-encoder; no torch)
+fastembed==0.8.0
+onnxruntime==1.19.2
 
 # UI
-streamlit>=1.36
+streamlit==1.58.0
+
+# Tests
+pytest==9.0.3

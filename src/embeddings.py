@@ -14,6 +14,8 @@ import tiktoken
 
 import config
 
+from .reliability import make_openai_client, openai_retry
+
 _ENC = tiktoken.get_encoding("cl100k_base")
 _CACHE_PATH = config.DATA_DIR / "embed_cache.pkl"
 
@@ -28,13 +30,7 @@ _cache: dict[str, np.ndarray] | None = None
 def _get_client():
     global _client
     if _client is None:
-        if not config.OPENAI_API_KEY:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set. Copy .env.example to .env and add your key."
-            )
-        from openai import OpenAI
-
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        _client = make_openai_client()
     return _client
 
 
@@ -61,6 +57,7 @@ def _key(text: str) -> str:
     return h
 
 
+@openai_retry
 def _embed_batch(texts: list[str]) -> list[np.ndarray]:
     resp = _get_client().embeddings.create(model=config.EMBED_MODEL, input=texts)
     return [np.asarray(d.embedding, dtype=np.float32) for d in resp.data]

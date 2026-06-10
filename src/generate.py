@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import config
 from .chunking import Chunk
+from .reliability import make_openai_client, openai_retry
 
 _SYSTEM = f"""You are a financial analyst assistant. You answer questions ONLY \
 using the numbered SOURCES provided, which are excerpts from companies' SEC \
@@ -77,6 +78,11 @@ class Answer:
     text: str
     sources: list[Source]
     refused: bool
+    usage: dict = None  # {"prompt_tokens": int, "completion_tokens": int}
+
+    def __post_init__(self):
+        if self.usage is None:
+            self.usage = {}
 
 
 _client = None
@@ -85,11 +91,7 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        if not config.OPENAI_API_KEY:
-            raise RuntimeError("OPENAI_API_KEY is not set.")
-        from openai import OpenAI
-
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        _client = make_openai_client()
     return _client
 
 
@@ -107,6 +109,15 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
     ]
 
 
+@openai_retry
+def _chat(messages: list[dict]):
+    return _get_client().chat.completions.create(
+        model=config.CHAT_MODEL,
+        temperature=0,
+        messages=messages,
+    )
+
+
 def generate(query: str, chunks: list[Chunk]) -> Answer:
     sources = _build_sources(chunks)
     if not sources:
@@ -117,14 +128,16 @@ def generate(query: str, chunks: list[Chunk]) -> Answer:
     )
     user = f"SOURCES:\n{context}\n\nQUESTION: {query}\n\nAnswer with citations:"
 
-    resp = _get_client().chat.completions.create(
-        model=config.CHAT_MODEL,
-        temperature=0,
-        messages=[
+    resp = _chat(
+        [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user},
-        ],
+        ]
     )
     text = resp.choices[0].message.content.strip()
     refused = config.REFUSAL_TEXT.lower() in text.lower()
-    return Answer(text=text, sources=sources, refused=refused)
+    usage = {
+        "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0),
+        "completion_tokens": getattr(resp.usage, "completion_tokens", 0),
+    }
+    return Answer(text=text, sources=sources, refused=refused, usage=usage)

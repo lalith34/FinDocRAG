@@ -78,7 +78,147 @@
   },
   {
     "id": "q12",
+    "question": "What net income did Apple report for the latest fiscal year?",
+    "expected_tickers": ["AAPL"],
+    "must_contain": ["net income"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q13",
+    "question": "What was Apple's gross margin in the most recent fiscal year?",
+    "expected_tickers": ["AAPL"],
+    "must_contain": ["gross margin"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q14",
+    "question": "What net income did Microsoft report?",
+    "expected_tickers": ["MSFT"],
+    "must_contain": ["net income"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q15",
+    "question": "What was Microsoft's revenue from Intelligent Cloud?",
+    "expected_tickers": ["MSFT"],
+    "must_contain": ["intelligent cloud"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q16",
+    "question": "What revenue did NVIDIA report for the latest fiscal year?",
+    "expected_tickers": ["NVDA"],
+    "must_contain": ["revenue"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q17",
+    "question": "What gross margin did NVIDIA report?",
+    "expected_tickers": ["NVDA"],
+    "must_contain": ["gross margin"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q18",
+    "question": "What operating cash flow did Amazon report?",
+    "expected_tickers": ["AMZN"],
+    "must_contain": ["operating activities"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q19",
+    "question": "What was Amazon's net sales from AWS?",
+    "expected_tickers": ["AMZN"],
+    "must_contain": ["aws"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q20",
+    "question": "What net income did Alphabet report for the latest fiscal year?",
+    "expected_tickers": ["GOOGL"],
+    "must_contain": ["net income"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q21",
+    "question": "What revenue does Alphabet report for Google Cloud?",
+    "expected_tickers": ["GOOGL"],
+    "must_contain": ["google cloud"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q22",
+    "question": "Compare Apple's and Microsoft's research and development spending.",
+    "expected_tickers": ["AAPL", "MSFT"],
+    "must_contain": ["research and development"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q23",
+    "question": "How do Amazon's and Alphabet's advertising businesses compare?",
+    "expected_tickers": ["AMZN", "GOOGL"],
+    "must_contain": ["advertising"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q24",
+    "question": "Compare the data center revenue of NVIDIA with Microsoft's cloud revenue.",
+    "expected_tickers": ["NVDA", "MSFT"],
+    "must_contain": ["data center", "cloud"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q25",
+    "question": "How do Apple and Amazon describe competition in their risk factors?",
+    "expected_tickers": ["AAPL", "AMZN"],
+    "must_contain": ["compet"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q26",
+    "question": "What supply chain risks does Apple disclose?",
+    "expected_tickers": ["AAPL"],
+    "must_contain": ["supply"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q27",
+    "question": "What does Microsoft disclose about cybersecurity risks?",
+    "expected_tickers": ["MSFT"],
+    "must_contain": ["cyber"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q28",
+    "question": "What regulatory and antitrust risks does Alphabet face?",
+    "expected_tickers": ["GOOGL"],
+    "must_contain": ["regulat", "antitrust"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q29",
+    "question": "What does Amazon disclose about climate or environmental commitments?",
+    "expected_tickers": ["AMZN"],
+    "must_contain": ["climate", "environment"],
+    "expect_refusal": false
+  },
+  {
+    "id": "q30",
     "question": "What is the personal cell phone number of Apple's CEO?",
+    "expected_tickers": [],
+    "must_contain": [],
+    "expect_refusal": true
+  },
+  {
+    "id": "q31",
+    "question": "What were Tesla's vehicle deliveries for the most recent year?",
+    "expected_tickers": [],
+    "must_contain": [],
+    "expect_refusal": true
+  },
+  {
+    "id": "q32",
+    "question": "What revenue does Apple forecast for the next five years?",
     "expected_tickers": [],
     "must_contain": [],
     "expect_refusal": true

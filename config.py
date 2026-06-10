@@ -13,10 +13,13 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"            # raw filing HTML
 PROCESSED_DIR = DATA_DIR / "processed"  # cleaned plain text
-INDEX_DIR = DATA_DIR / "index"        # built indexes (one subdir per chunking strategy)
+INDEX_DIR = DATA_DIR / "index"        # local chunk snapshots (one subdir per chunking strategy)
 EVAL_DIR = ROOT / "eval"
+LOGS_DIR = ROOT / "logs"
+QUERY_LOG = LOGS_DIR / "queries.jsonl"
+FEEDBACK_LOG = LOGS_DIR / "feedback.jsonl"
 
-for _d in (RAW_DIR, PROCESSED_DIR, INDEX_DIR):
+for _d in (RAW_DIR, PROCESSED_DIR, INDEX_DIR, LOGS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # --- Corpus ------------------------------------------------------------------
@@ -39,12 +42,33 @@ FILING_FORM = "10-K"
 # --- OpenAI models -----------------------------------------------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")  # 1536-dim
+EMBED_DIM = 1536
 # Generation uses the stronger model: gpt-4o-mini spuriously refuses when the
 # retrieved context mixes the answer with related-but-partial chunks (e.g. a
 # cross-company comparison padded with segment-level tables). gpt-4o is robust to
-# that noise. Reranking is just relevance scoring, so the cheap model suffices.
+# that noise.
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o")
-RERANK_MODEL = os.getenv("OPENAI_RERANK_MODEL", "gpt-4o-mini")
+
+# $/1M tokens (input, output) for query-cost estimation in telemetry.
+MODEL_PRICES = {
+    "gpt-4o": (2.50, 10.00),
+    "text-embedding-3-small": (0.02, 0.0),
+}
+
+# --- Pinecone ------------------------------------------------------------------
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "fintech-10k")
+PINECONE_CLOUD = "aws"
+PINECONE_REGION = "us-east-1"
+PINECONE_BATCH_SIZE = 100
+
+# --- Reranker ------------------------------------------------------------------
+# Local ONNX cross-encoder (fastembed); no torch, works on Intel macOS.
+RERANK_ONNX_MODEL = os.getenv("RERANK_ONNX_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
+
+# --- App -----------------------------------------------------------------------
+# Shared password for the Streamlit UI. Unset = open access (dev mode).
+APP_PASSWORD = os.getenv("APP_PASSWORD")
 
 # --- Chunking ----------------------------------------------------------------
 # Fixed-size strategy (token based). 800 tokens pairs well with a 1536-dim model.

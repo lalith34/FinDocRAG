@@ -34,6 +34,46 @@ _ARCHIVE_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{doc}"
 
 _HEADERS = {"User-Agent": config.SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"}
 
+# --- iXBRL/XBRL artifact stripping -------------------------------------------
+# SEC filings are inline-XBRL: the visible 10-K is wrapped in a "hidden" block of
+# machine-readable facts (tag contexts, CIK, period dates, units, taxonomy URLs).
+# BeautifulSoup's get_text() dumps that block into the plain text as a long run of
+# single-token lines, e.g.
+#     0001045810
+#     us-gaap:RetainedEarningsMember
+#     2025-01-27
+#     iso4217:USD
+#     P1Y
+# These tokens are pure tagging noise: they carry no prose and crowd out real
+# tables in dense retrieval. We drop a line only when, stripped, it matches one of
+# these XBRL-only shapes. Real financial tables survive because the table flattener
+# emits pipe-delimited rows ("Revenue | $ | 215,938 | ...") that never match — a
+# qualified name, lone CIK, lone ISO date, or ISO duration is always a single
+# whitespace-free token, while table rows and prose contain spaces and/or pipes.
+_XBRL_LINE_PATTERNS = (
+    # Qualified XBRL names: us-gaap:/dei:/srt:/<ticker>:/iso4217:/xbrli:..., incl.
+    # the "...Member" dimension members. Prefix may contain a hyphen (us-gaap).
+    re.compile(r"^[A-Za-z][\w-]*:[\w.\-]+$"),
+    re.compile(r"^\d{10}$"),                 # bare CIK, e.g. 0001045810
+    re.compile(r"^\d{4}-\d{2}-\d{2}$"),      # lone ISO context date
+    re.compile(r"^P\d+[YMWD]$"),             # ISO-8601 duration, e.g. P1Y / P3Y
+    re.compile(r"^https?://\S+$"),           # taxonomy URLs (fasb.org/...)
+    re.compile(r"^(?:true|false|FY|Q[1-4])$"),  # XBRL scalar/period flags
+    re.compile(r"^(?:19|20)\d{2}$"),         # lone fiscal-year context token
+)
+
+
+def _is_xbrl_artifact(line: str) -> bool:
+    return any(p.match(line) for p in _XBRL_LINE_PATTERNS)
+
+
+def strip_xbrl_artifacts(text: str) -> str:
+    """Remove inline-XBRL tagging lines, keeping prose and flattened tables."""
+    kept = [ln for ln in text.splitlines() if not _is_xbrl_artifact(ln.strip())]
+    cleaned = "\n".join(kept)
+    cleaned = re.sub(r"\n\s*\n+", "\n\n", cleaned)
+    return cleaned.strip()
+
 
 @dataclass
 class FilingMeta:
@@ -107,7 +147,8 @@ def _clean_html(html: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n\n", text)
     lines = [ln.strip() for ln in text.splitlines()]
-    return "\n".join(ln for ln in lines if ln).strip()
+    text = "\n".join(ln for ln in lines if ln).strip()
+    return strip_xbrl_artifacts(text)
 
 
 def ingest_company(

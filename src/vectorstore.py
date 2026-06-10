@@ -147,8 +147,11 @@ class PineconeStore:
         # Serverless indexes have no delete-by-metadata-filter; chunk_ids are
         # "<TICKER>-<strategy>-NNNN", so id-prefix listing covers it.
         for ids in self.index.list(prefix=f"{ticker}-", namespace=self.strategy):
+            # Newer pinecone clients yield ListItem objects, not bare strings;
+            # the delete endpoint needs JSON-serializable string ids.
+            ids = [getattr(x, "id", x) for x in ids]
             if ids:
-                self.index.delete(ids=list(ids), namespace=self.strategy)
+                self.index.delete(ids=ids, namespace=self.strategy)
 
     # --- retrieval ---------------------------------------------------------------
     def _chunk_from_match(self, match) -> Chunk:

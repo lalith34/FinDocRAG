@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +72,28 @@ def judge_answer(question: str, answer_text: str, sources_text: str) -> dict:
     return json.loads(_call().choices[0].message.content)
 
 
+# --- judge checkpoint --------------------------------------------------------
+# The judge pass is the only expensive, rate-limited part of the eval and it can
+# run for many minutes against a 30K TPM ceiling. We append each verdict to a
+# JSONL checkpoint as soon as it is computed and resume from it on the next run,
+# so a crash (or Ctrl-C) never throws away completed work — only the in-flight
+# question is repeated.
+def _judge_ckpt_path(queries_name: str, strategy: str) -> Path:
+    stem = Path(queries_name).stem
+    return config.LOGS_DIR / f"judge_{stem}_{strategy}.jsonl"
+
+
+def _load_judge_ckpt(path: Path) -> dict[str, dict]:
+    done: dict[str, dict] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                rec = json.loads(line)
+                done[rec["id"]] = rec
+    return done
+
+
 # --- main --------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
@@ -81,6 +104,18 @@ def main():
         default="queries.json",
         help="query/label file under eval/ (e.g. question_bank.json for the "
         "150-question grounded bank). Default: the curated queries.json.",
+    )
+    ap.add_argument(
+        "--pace",
+        type=float,
+        default=0.0,
+        help="seconds to sleep between judged questions; spreads gpt-4o token "
+        "use under a tight per-minute rate limit (0 = as fast as retries allow).",
+    )
+    ap.add_argument(
+        "--fresh-judge",
+        action="store_true",
+        help="ignore any saved judge checkpoint and re-score every question.",
     )
     args = ap.parse_args()
 
@@ -111,16 +146,36 @@ def main():
     if not args.no_judge:
         gen_strategy = args.strategies[-1]  # judge on the richer/last strategy
         store = PineconeStore(gen_strategy)
-        for q in answerable:
-            qvec = embeddings.embed_query(q["question"])
-            pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
-            top = [c for c, _ in rerank(q["question"], pool, TOP_K)]
-            ans = generate(q["question"], top)
-            src_text = "\n\n".join(f"[{i+1}] {c.text}" for i, c in enumerate(top))
-            verdict = judge_answer(q["question"], ans.text, src_text)
-            gen_rows.append(verdict)
-            print(f"  [gen] {q['id']} faithful={verdict.get('faithfulness')} "
-                  f"relevant={verdict.get('relevance')}", flush=True)
+
+        ckpt = _judge_ckpt_path(args.queries, gen_strategy)
+        if args.fresh_judge:
+            ckpt.unlink(missing_ok=True)
+        done = _load_judge_ckpt(ckpt)
+        if done:
+            print(f"  [gen] resuming: {len(done)} verdicts loaded from {ckpt.name}",
+                  flush=True)
+
+        # Append-mode so each verdict is durably flushed before the next call;
+        # an interrupted run resumes here instead of re-spending tokens.
+        with ckpt.open("a", encoding="utf-8") as fh:
+            for q in answerable:
+                if q["id"] in done:
+                    gen_rows.append(done[q["id"]])
+                    continue
+                qvec = embeddings.embed_query(q["question"])
+                pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
+                top = [c for c, _ in rerank(q["question"], pool, TOP_K)]
+                ans = generate(q["question"], top)
+                src_text = "\n\n".join(f"[{i+1}] {c.text}" for i, c in enumerate(top))
+                verdict = judge_answer(q["question"], ans.text, src_text)
+                rec = {"id": q["id"], **verdict}
+                fh.write(json.dumps(rec) + "\n")
+                fh.flush()
+                gen_rows.append(rec)
+                print(f"  [gen] {q['id']} faithful={verdict.get('faithfulness')} "
+                      f"relevant={verdict.get('relevance')}", flush=True)
+                if args.pace:
+                    time.sleep(args.pace)
 
         for q in refusal_qs:
             qvec = embeddings.embed_query(q["question"])

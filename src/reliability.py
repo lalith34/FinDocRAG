@@ -48,10 +48,14 @@ http_retry = retry(
 
 
 def openai_retry(fn):
+    # 8 attempts (waits 1,2,4,8,16,32,60,60s ≈ 3 min of budget) so a sustained
+    # token-per-minute rate-limit burst — which can last a full 60s window — is
+    # ridden out instead of exhausting the retries and crashing a long eval run.
+    # The org's 30K TPM ceiling makes heavy judge passes the main trigger.
     return retry(
         retry=retry_if_exception_type(_openai_errors()),
         wait=wait_exponential(multiplier=1, max=60),
-        stop=stop_after_attempt(5),
+        stop=stop_after_attempt(8),
         reraise=True,
         before_sleep=before_sleep_log(log, logging.WARNING),
     )(fn)

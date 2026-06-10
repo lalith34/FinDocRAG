@@ -37,8 +37,8 @@ Metrics @k=5 over 29 answerable queries.
 
 ## 3. Generation quality (LLM judge, full pipeline)
 
-- Faithfulness: **93%**
-- Relevance: **93%**
+- Faithfulness: **100%**
+- Relevance: **97%**
 
 ## 4. Refusal path
 

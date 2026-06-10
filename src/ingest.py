@@ -155,24 +155,55 @@ def _clean_html(html: str) -> str:
 
 
 def ingest_company(
-    ticker: str, company: str, cik: int, *, force: bool = False
+    ticker: str, company: str, cik: int, *, force: bool = False, refresh_raw: bool = False
 ) -> tuple[FilingMeta, bool]:
-    """Fetch/clean the latest filing. Returns (meta, changed). When the latest
-    EDGAR accession matches what we already processed, skip the download and
-    return the existing meta with changed=False."""
-    acc, doc, date = latest_filing(cik)
+    """Fetch/clean the latest filing. Returns (meta, changed).
 
+    The raw filing HTML cached under data/raw is the source of truth. Re-cleaning
+    (e.g. after changing the cleaner) reuses that cached HTML, so the processed
+    text is reproducible byte-for-byte — _clean_html is deterministic, the
+    download is not (EDGAR can return slightly different bytes for the same
+    immutable accession between fetches). The document is fetched from EDGAR only
+    when it is missing, when a newer accession is published, or when
+    refresh_raw=True forces a re-download.
+
+    When the latest EDGAR accession matches what we already processed (and we are
+    not forcing or refreshing), skip the work and return existing meta,
+    changed=False."""
     meta_path = config.PROCESSED_DIR / f"{ticker}.meta.json"
     text_path = config.PROCESSED_DIR / f"{ticker}.txt"
-    if not force and meta_path.exists() and text_path.exists():
-        existing = json.loads(meta_path.read_text(encoding="utf-8"))
-        if existing.get("accession") == acc:
-            return FilingMeta(**existing), False
+    raw_path = config.RAW_DIR / f"{ticker}.html"
+    cached_meta = (
+        json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else None
+    )
 
-    url = _ARCHIVE_URL.format(cik=cik, acc=acc, doc=doc)
-    html = _get(url)
+    # Deterministic re-clean: reuse cached raw HTML and its accession, no network
+    # for the document. This is the rebuild-after-cleaner-change path.
+    reclean_from_cache = (
+        force and not refresh_raw and raw_path.exists() and cached_meta is not None
+    )
 
-    (config.RAW_DIR / f"{ticker}.html").write_text(html, encoding="utf-8")
+    if reclean_from_cache:
+        acc = cached_meta["accession"]
+        date = cached_meta["filing_date"]
+        url = cached_meta["source_url"]
+        html = raw_path.read_text(encoding="utf-8")
+    else:
+        acc, doc, date = latest_filing(cik)
+        url = _ARCHIVE_URL.format(cik=cik, acc=acc, doc=doc)
+        # Incremental skip: same accession already processed, nothing forced.
+        if (
+            not force
+            and not refresh_raw
+            and cached_meta is not None
+            and text_path.exists()
+            and raw_path.exists()
+            and cached_meta.get("accession") == acc
+        ):
+            return FilingMeta(**cached_meta), False
+        html = _get(url)
+        raw_path.write_text(html, encoding="utf-8")
+
     text = _clean_html(html)
     text_path.write_text(text, encoding="utf-8")
 
@@ -191,7 +222,10 @@ def ingest_company(
 
 
 def ingest_all(
-    companies: dict[str, str] | None = None, *, force: bool = False
+    companies: dict[str, str] | None = None,
+    *,
+    force: bool = False,
+    refresh_raw: bool = False,
 ) -> dict[str, tuple[FilingMeta, bool]]:
     """Returns {ticker: (meta, changed)} so callers can rebuild only what moved."""
     companies = companies or config.COMPANIES
@@ -199,7 +233,9 @@ def ingest_all(
     out = {}
     for ticker, company in companies.items():
         print(f"[ingest] {ticker} ({company}) CIK={ciks[ticker]} ...", flush=True)
-        meta, changed = ingest_company(ticker, company, ciks[ticker], force=force)
+        meta, changed = ingest_company(
+            ticker, company, ciks[ticker], force=force, refresh_raw=refresh_raw
+        )
         status = "updated" if changed else "unchanged (skipped download)"
         print(
             f"         {meta.form} {meta.filing_date}  "

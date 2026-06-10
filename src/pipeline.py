@@ -72,10 +72,14 @@ def mentioned_tickers(query: str) -> list[str]:
 
 # --- Build -------------------------------------------------------------------
 def build_indexes(
-    strategies=config.STRATEGIES, *, do_ingest: bool = True, force: bool = False
+    strategies=config.STRATEGIES,
+    *,
+    do_ingest: bool = True,
+    force: bool = False,
+    refresh_raw: bool = False,
 ) -> dict:
     if do_ingest:
-        ingest_results = ingest.ingest_all(force=force)
+        ingest_results = ingest.ingest_all(force=force, refresh_raw=refresh_raw)
         changed_tickers = {t for t, (_, changed) in ingest_results.items() if changed}
     else:
         changed_tickers = set(config.COMPANIES)

@@ -114,6 +114,7 @@ def _chat(messages: list[dict]):
     return _get_client().chat.completions.create(
         model=config.CHAT_MODEL,
         temperature=0,
+        seed=config.GEN_SEED,
         messages=messages,
     )
 
@@ -139,5 +140,9 @@ def generate(query: str, chunks: list[Chunk]) -> Answer:
     usage = {
         "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0),
         "completion_tokens": getattr(resp.usage, "completion_tokens", 0),
+        # The backend build that served this completion. With temperature=0 and a
+        # fixed seed, output is reproducible only while this fingerprint is stable;
+        # a change here is OpenAI's signal that determinism may have shifted.
+        "system_fingerprint": getattr(resp, "system_fingerprint", None),
     }
     return Answer(text=text, sources=sources, refused=refused, usage=usage)

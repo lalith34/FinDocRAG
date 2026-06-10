@@ -38,7 +38,9 @@ def rrf_fuse(
     for ranked in ranked_id_lists:
         for rank, cid in enumerate(ranked):
             fused[cid] = fused.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
-    return sorted(fused.items(), key=lambda kv: -kv[1])[:k]
+    # Tie-break on chunk_id so equal fused scores produce a stable order
+    # regardless of dict insertion order or upstream ranking jitter.
+    return sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
 
 
 _pc = None
@@ -181,13 +183,18 @@ class PineconeStore:
             include_metadata=True,
             filter={"ticker": {"$eq": ticker}} if ticker else None,
         )
-        return [(self._chunk_from_match(m), float(m.score)) for m in res.matches]
+        # Pinecone is an approximate index and does not guarantee a stable order
+        # for equal scores; re-sort by (score desc, id) for a reproducible ranking.
+        matches = sorted(res.matches, key=lambda m: (-float(m.score), m.id))
+        return [(self._chunk_from_match(m), float(m.score)) for m in matches]
 
     def sparse(self, query: str, k: int) -> list[tuple[Chunk, float]]:
         if self._bm25 is None:
             return []
         scores = self._bm25.get_scores(_tokenize(query))
-        idx = np.argsort(-scores)[:k]
+        # Stable sort so equal BM25 scores keep chunk order; self.chunks is stored
+        # sorted by chunk_id, so ties break deterministically by chunk_id.
+        idx = np.argsort(-scores, kind="stable")[:k]
         return [(self.chunks[int(i)], float(scores[i])) for i in idx]
 
     def hybrid(

@@ -48,6 +48,9 @@ class QueryTrace:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     est_cost_usd: float = 0.0
+    # Reproducibility provenance: which model snapshot + backend build answered.
+    model: str = ""
+    system_fingerprint: str | None = None
     ts: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 

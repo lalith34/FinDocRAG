@@ -41,5 +41,9 @@ def rerank(
         return [(c, float(len(candidates) - i)) for i, c in enumerate(candidates)][:top_k]
 
     scores = list(model.rerank(query, [c.text for c in candidates]))
-    ranked = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+    # Sort by score desc, tie-broken by chunk_id, so equal cross-encoder scores
+    # produce a stable, reproducible order independent of candidate input order.
+    ranked = sorted(
+        range(len(candidates)), key=lambda i: (-scores[i], candidates[i].chunk_id)
+    )
     return [(candidates[i], float(scores[i])) for i in ranked[:top_k]]

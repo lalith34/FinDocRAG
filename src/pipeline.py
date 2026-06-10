@@ -234,6 +234,8 @@ class RAGPipeline:
                 ),
                 6,
             ),
+            model=config.CHAT_MODEL,
+            system_fingerprint=ans.usage.get("system_fingerprint"),
         )
         telemetry.log_query(trace)
 

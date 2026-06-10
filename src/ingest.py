@@ -46,10 +46,15 @@ _HEADERS = {"User-Agent": config.SEC_USER_AGENT, "Accept-Encoding": "gzip, defla
 #     P1Y
 # These tokens are pure tagging noise: they carry no prose and crowd out real
 # tables in dense retrieval. We drop a line only when, stripped, it matches one of
-# these XBRL-only shapes. Real financial tables survive because the table flattener
-# emits pipe-delimited rows ("Revenue | $ | 215,938 | ...") that never match — a
-# qualified name, lone CIK, lone ISO date, or ISO duration is always a single
-# whitespace-free token, while table rows and prose contain spaces and/or pipes.
+# these *unambiguous* XBRL-only shapes. Real financial tables survive because the
+# table flattener emits pipe-delimited rows ("Revenue | $ | 215,938 | ...") that
+# never match — a qualified name, lone CIK, lone ISO date, ISO duration, or
+# taxonomy URL is always a single whitespace-free token, while table rows and
+# prose contain spaces and/or pipes.
+#
+# We deliberately do NOT strip bare years (e.g. "2002"), "FY", or "true"/"false":
+# those also appear as legitimate content (exhibit dates, headings) and chunking
+# can push a real year to a line start, so removing them risks deleting real text.
 _XBRL_LINE_PATTERNS = (
     # Qualified XBRL names: us-gaap:/dei:/srt:/<ticker>:/iso4217:/xbrli:..., incl.
     # the "...Member" dimension members. Prefix may contain a hyphen (us-gaap).
@@ -58,8 +63,6 @@ _XBRL_LINE_PATTERNS = (
     re.compile(r"^\d{4}-\d{2}-\d{2}$"),      # lone ISO context date
     re.compile(r"^P\d+[YMWD]$"),             # ISO-8601 duration, e.g. P1Y / P3Y
     re.compile(r"^https?://\S+$"),           # taxonomy URLs (fasb.org/...)
-    re.compile(r"^(?:true|false|FY|Q[1-4])$"),  # XBRL scalar/period flags
-    re.compile(r"^(?:19|20)\d{2}$"),         # lone fiscal-year context token
 )
 
 

@@ -71,7 +71,10 @@ with st.sidebar:
     if not available:
         st.error("No index found. Run `python -m scripts.build_index` first.")
         st.stop()
-    strategy = st.selectbox("Chunking strategy", available, index=len(available) - 1)
+    # Chunking strategy is an internal retrieval detail, not a user-facing knob:
+    # prefer semantic (best in the eval), else whatever index is built.
+    strategy = "semantic" if "semantic" in available else available[-1]
+    model = st.selectbox("Answer model", config.CHAT_MODELS, index=0)
     use_rerank = st.toggle("Rerank candidates", value=True)
     top_k = st.slider("Sources (top-k)", 1, 10, config.TOP_K)
     st.divider()
@@ -117,7 +120,7 @@ if prompt := st.chat_input("e.g. What were Apple's total net sales last year?"):
     with st.chat_message("assistant"):
         with st.spinner("Retrieving and reading filings…"):
             pipe = load_pipeline(strategy)
-            result = pipe.answer(prompt, use_rerank=use_rerank, top_k=top_k)
+            result = pipe.answer(prompt, use_rerank=use_rerank, top_k=top_k, model=model)
         st.markdown(result.answer.text)
         sources = [
             {

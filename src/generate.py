@@ -110,16 +110,17 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
 
 
 @openai_retry
-def _chat(messages: list[dict]):
+def _chat(messages: list[dict], model: str):
     return _get_client().chat.completions.create(
-        model=config.CHAT_MODEL,
+        model=model,
         temperature=0,
         seed=config.GEN_SEED,
         messages=messages,
     )
 
 
-def generate(query: str, chunks: list[Chunk]) -> Answer:
+def generate(query: str, chunks: list[Chunk], *, model: str | None = None) -> Answer:
+    model = model or config.CHAT_MODEL
     sources = _build_sources(chunks)
     if not sources:
         return Answer(text=config.REFUSAL_TEXT, sources=[], refused=True)
@@ -133,7 +134,8 @@ def generate(query: str, chunks: list[Chunk]) -> Answer:
         [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user},
-        ]
+        ],
+        model,
     )
     text = resp.choices[0].message.content.strip()
     refused = config.REFUSAL_TEXT.lower() in text.lower()

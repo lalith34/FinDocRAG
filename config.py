@@ -56,6 +56,13 @@ EMBED_DIM = 1536
 # query/context. A dated snapshot is the only way to keep generation reproducible
 # over time.
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-2024-08-06")
+# Models the UI lets the user pick for answering. The first is the default and
+# must match CHAT_MODEL so the dropdown and the headless default agree.
+CHAT_MODELS = [
+    "gpt-4o-2024-08-06",
+    "gpt-4o-mini",
+    "gpt-4o",
+]
 # Best-effort determinism knob for chat completions. Combined with temperature=0
 # and a pinned snapshot, the same (seed, model, prompt) returns the same output
 # as long as system_fingerprint (logged per query) is unchanged.
@@ -65,6 +72,7 @@ GEN_SEED = int(os.getenv("OPENAI_GEN_SEED", "7"))
 MODEL_PRICES = {
     "gpt-4o-2024-08-06": (2.50, 10.00),
     "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
     "text-embedding-3-small": (0.02, 0.0),
 }
 

@@ -18,9 +18,9 @@ plus an evaluation report and a chatbot UI.
 | **Ingestion + cleaning** | EDGAR submissions API → primary doc HTML → strip script/style, decode entities, **flatten tables to pipe-delimited rows** (table-aware) |
 | **Chunking** | `fixed` (800-tok window, 120 overlap) **vs** `semantic` (sentence-grouped, break at 90th-pct embedding-distance) — compared in the eval |
 | **Embedding** | OpenAI `text-embedding-3-small` (1536-dim) with on-disk cache |
-| **Retrieve** | Local numpy store; **hybrid** = dense cosine + BM25 sparse, fused with RRF; top-k=5 from a 20-candidate pool |
-| **Rerank** | LLM listwise reranker (one call/query); impact measured in the eval |
-| **Generate** | `gpt-4o-mini`, cite-everything prompt, **explicit refusal** when context is insufficient |
+| **Retrieve** | **Pinecone** serverless index (dense cosine, one namespace per strategy) + local BM25 sparse, fused with RRF; top-k=5 from a 20-candidate pool |
+| **Rerank** | Local **ONNX cross-encoder** (`fastembed`, no torch) reranks the candidate pool; impact measured in the eval |
+| **Generate** | `gpt-4o-2024-08-06` (dated snapshot, seeded for reproducibility), cite-everything prompt, **explicit refusal** when context is insufficient. The chatbot lets you pick the answer model. |
 
 ## Setup
 
@@ -29,8 +29,13 @@ cd Week_2_Fintech_Project
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env        # then add your OPENAI_API_KEY
+cp .env.example .env        # then add your OPENAI_API_KEY and PINECONE_API_KEY
 ```
+
+Required keys (see [.env.example](.env.example)): `OPENAI_API_KEY` (embeddings +
+generation), `PINECONE_API_KEY` (dense vector store). Optional: `APP_PASSWORD`
+gates the Streamlit UI (unset = open dev mode); the reranker runs locally from a
+one-time ~90MB ONNX model download, no key needed.
 
 ## Run
 
@@ -57,8 +62,8 @@ src/
   ingest.py           # EDGAR download + table-aware HTML cleaning
   chunking.py         # fixed-size and semantic chunkers
   embeddings.py       # OpenAI embeddings + batching + cache
-  vectorstore.py      # dense / sparse(BM25) / hybrid(RRF) retrieval
-  rerank.py           # LLM listwise reranker
+  vectorstore.py      # Pinecone dense + local BM25 sparse, fused with RRF (hybrid)
+  rerank.py           # local ONNX cross-encoder reranker
   generate.py         # cited generation + refusal path
   pipeline.py         # build_indexes() + RAGPipeline.answer()
 scripts/

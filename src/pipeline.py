@@ -164,7 +164,9 @@ class RAGPipeline:
         *,
         use_rerank: bool = True,
         top_k: int = config.TOP_K,
+        model: str | None = None,
     ) -> RAGResult:
+        model = model or config.CHAT_MODEL
         r = router.route(query)
         if r.kind == router.SMALLTALK:
             return RAGResult(
@@ -206,7 +208,7 @@ class RAGPipeline:
             else:
                 top = candidates[:top_k]
             t2 = time.perf_counter()
-        ans = generate(query, top)
+        ans = generate(query, top, model=model)
         t3 = time.perf_counter()
 
         trace = telemetry.QueryTrace(
@@ -224,13 +226,13 @@ class RAGPipeline:
             completion_tokens=ans.usage.get("completion_tokens", 0),
             est_cost_usd=round(
                 telemetry.estimate_cost(
-                    config.CHAT_MODEL,
+                    model,
                     ans.usage.get("prompt_tokens", 0),
                     ans.usage.get("completion_tokens", 0),
                 ),
                 6,
             ),
-            model=config.CHAT_MODEL,
+            model=model,
             system_fingerprint=ans.usage.get("system_fingerprint"),
         )
         telemetry.log_query(trace)

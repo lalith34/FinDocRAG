@@ -130,11 +130,12 @@ def main():
             refusal_results.append((q["id"], ans.refused))
             print(f"  [refusal] {q['id']} refused={ans.refused}", flush=True)
 
-    write_report(args, chunk_rows, rerank_rows, gen_rows, refusal_results)
+    write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_results)
 
 
-def write_report(args, chunk_rows, rerank_rows, gen_rows, refusal_results):
+def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_results):
     lines = ["# Financial RAG — Evaluation Report", ""]
+    lines += [f"_Query set: `{args.queries}` ({len(answerable)} answerable queries)._", ""]
 
     # corpus summary
     lines += ["## Corpus", "", "| Ticker | Company | Form | Filed | Chars |", "|---|---|---|---|---|"]
@@ -186,6 +187,27 @@ def write_report(args, chunk_rows, rerank_rows, gen_rows, refusal_results):
         )
     lines.append("")
 
+    # per-category breakdown (only when the query set carries category labels,
+    # e.g. the grounded question bank). Reported on the reranked variant since
+    # that is the production retrieval path.
+    if any("category" in q for q in answerable):
+        cats = [q.get("category", "(uncategorized)") for q in answerable]
+        lines += [
+            "## Per-category retrieval (+rerank)",
+            "",
+            "| Category | Strategy | n | Hit@k | MRR | Precision@k |",
+            "|---|---|---|---|---|---|",
+        ]
+        for category in sorted(set(cats)):
+            idx = [i for i, c in enumerate(cats) if c == category]
+            for strategy in args.strategies:
+                rr = [rerank_rows[strategy][i] for i in idx]
+                lines.append(
+                    f"| {category} | {strategy} | {len(rr)} | {avg(rr,'hit'):.2f} | "
+                    f"{avg(rr,'mrr'):.3f} | {avg(rr,'precision'):.3f} |"
+                )
+        lines.append("")
+
     # generation
     if gen_rows:
         faith = sum(r.get("faithfulness", 0) for r in gen_rows) / len(gen_rows)
@@ -206,7 +228,11 @@ def write_report(args, chunk_rows, rerank_rows, gen_rows, refusal_results):
             "",
         ]
 
-    out = config.EVAL_DIR / "REPORT.md"
+    # Curated default keeps its historical name; any other query set writes a
+    # sibling report so it never clobbers REPORT.md.
+    stem = Path(args.queries).stem
+    report_name = "REPORT.md" if stem == "queries" else f"{stem}_report.md"
+    out = config.EVAL_DIR / report_name
     out.write_text("\n".join(lines), encoding="utf-8")
     print(f"\nReport written -> {out}")
     print("\n".join(lines))

@@ -199,13 +199,22 @@ class PineconeStore:
         matches = sorted(res.matches, key=lambda m: (-float(m.score), m.id))
         return [(self._chunk_from_match(m), float(m.score)) for m in matches]
 
-    def sparse(self, query: str, k: int) -> list[tuple[Chunk, float]]:
+    def sparse(
+        self, query: str, k: int, *, ticker: str | None = None
+    ) -> list[tuple[Chunk, float]]:
         if self._bm25 is None:
             return []
         scores = self._bm25.get_scores(_tokenize(query))
         # Stable sort so equal BM25 scores keep chunk order; self.chunks is stored
         # sorted by chunk_id, so ties break deterministically by chunk_id.
-        idx = np.argsort(-scores, kind="stable")[:k]
+        order = np.argsort(-scores, kind="stable")
+        # When scoped to one company, keep only that company's chunks before
+        # taking the top-k, mirroring the dense side's metadata filter; otherwise
+        # BM25 (which scores the whole corpus) would still feed other companies'
+        # chunks into the fusion for a question about a single named company.
+        if ticker is not None:
+            order = [i for i in order if self.chunks[int(i)].ticker == ticker]
+        idx = order[:k]
         return [(self.chunks[int(i)], float(scores[i])) for i in idx]
 
     def hybrid(
@@ -220,7 +229,7 @@ class PineconeStore:
     ) -> list[tuple[Chunk, float]]:
         pool = max(k, config.RETRIEVE_K)
         dense_hits = self.dense(query_vec, pool, ticker=ticker)
-        sparse_hits = self.sparse(query, pool)
+        sparse_hits = self.sparse(query, pool, ticker=ticker)
         by_id = {c.chunk_id: c for c, _ in dense_hits + sparse_hits}
         fused = rrf_fuse(
             [[c.chunk_id for c, _ in dense_hits], [c.chunk_id for c, _ in sparse_hits]],

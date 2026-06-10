@@ -19,6 +19,13 @@ Routes:
   LEXICAL     exact-match signals dominate            -> upweight BM25
   SEMANTIC    conceptual natural-language question     -> upweight dense
   HYBRID      balanced default when nothing dominates  -> equal weights
+
+When exactly one company is named, the route also carries that ticker so the
+pipeline can constrain retrieval to that company's filing. Without it a question
+like "who is the CEO of AAPL?" competes against every other company's near-
+identical signature block, and the cross-encoder can seat a wrong-company chunk
+in the final context. A single named ticker is an unambiguous filter; scoping to
+it costs nothing and removes the cross-company contamination.
 """
 from __future__ import annotations
 
@@ -170,6 +177,9 @@ def route(query: str) -> Route:
             reason=f"{len(tickers)} companies named",
         )
 
+    # A single named company scopes retrieval to that filing (see module docstring).
+    scope = tuple(tickers)  # () or one ticker
+
     lower = q.lower()
     words = _WORD_RE.findall(q)
     lex = _lexical_score(q, lower, words)
@@ -177,9 +187,9 @@ def route(query: str) -> Route:
     margin = lex - sem
 
     if margin >= _DECISION_MARGIN:
-        return Route(LEXICAL, dense_weight=1.0, sparse_weight=2.0,
+        return Route(LEXICAL, dense_weight=1.0, sparse_weight=2.0, tickers=scope,
                      reason=f"lexical signals dominate (lex={lex}, sem={sem})")
     if -margin >= _DECISION_MARGIN:
-        return Route(SEMANTIC, dense_weight=2.0, sparse_weight=1.0,
+        return Route(SEMANTIC, dense_weight=2.0, sparse_weight=1.0, tickers=scope,
                      reason=f"semantic signals dominate (lex={lex}, sem={sem})")
-    return Route(HYBRID, reason=f"balanced (lex={lex}, sem={sem})")
+    return Route(HYBRID, tickers=scope, reason=f"balanced (lex={lex}, sem={sem})")

@@ -44,6 +44,27 @@ def test_single_company_is_not_comparison():
     assert route("what were Apple's total net sales").kind != COMPARISON
 
 
+# --- Single-company scoping --------------------------------------------------
+@pytest.mark.parametrize(
+    "q,tk",
+    [
+        ("Who is the Chief Executive Officer of AAPL?", "AAPL"),
+        ("what were Apple's total net sales", "AAPL"),
+        ("explain Microsoft's cloud strategy and outlook", "MSFT"),  # semantic route
+        ("nvidia net sales figure", "NVDA"),                         # lexical route
+    ],
+)
+def test_one_named_company_scopes_route_to_that_ticker(q, tk):
+    r = route(q)
+    assert r.kind != COMPARISON
+    assert r.tickers == (tk,)
+
+
+def test_no_company_named_leaves_route_unscoped():
+    r = route("what were total net sales last year")
+    assert r.tickers == ()
+
+
 # --- Lexical -----------------------------------------------------------------
 @pytest.mark.parametrize(
     "q",

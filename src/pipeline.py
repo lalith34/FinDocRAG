@@ -122,6 +122,7 @@ class RAGPipeline:
         query: str,
         k: int = config.RETRIEVE_K,
         *,
+        ticker: str | None = None,
         dense_weight: float = 1.0,
         sparse_weight: float = 1.0,
     ) -> list[Chunk]:
@@ -129,7 +130,12 @@ class RAGPipeline:
         return [
             c
             for c, _ in self.store.hybrid(
-                query, qvec, k, dense_weight=dense_weight, sparse_weight=sparse_weight
+                query,
+                qvec,
+                k,
+                ticker=ticker,
+                dense_weight=dense_weight,
+                sparse_weight=sparse_weight,
             )
         ]
 
@@ -183,10 +189,14 @@ class RAGPipeline:
         else:
             # LEXICAL / SEMANTIC / HYBRID all run weighted hybrid retrieval; the
             # router only shifts the dense/BM25 fusion weights (see router.route).
+            # When the router named exactly one company, scope retrieval to it so
+            # other companies' near-identical chunks can't crowd out the answer.
             reranked = use_rerank
+            ticker = r.tickers[0] if len(r.tickers) == 1 else None
             candidates = self.retrieve(
                 query,
                 config.RETRIEVE_K,
+                ticker=ticker,
                 dense_weight=r.dense_weight,
                 sparse_weight=r.sparse_weight,
             )

@@ -31,13 +31,24 @@ def _tokenize(text: str) -> list[str]:
 
 
 def rrf_fuse(
-    ranked_id_lists: list[list[str]], k: int, *, rrf_k: int = config.RRF_K
+    ranked_id_lists: list[list[str]],
+    k: int,
+    *,
+    rrf_k: int = config.RRF_K,
+    weights: list[float] | None = None,
 ) -> list[tuple[str, float]]:
-    """Fuse ranked lists of chunk_ids via Reciprocal Rank Fusion."""
+    """Fuse ranked lists of chunk_ids via Reciprocal Rank Fusion.
+
+    `weights` scales each list's contribution (defaults to equal weight). The
+    router uses this to upweight BM25 for lexical queries or dense for semantic
+    ones without dropping the other signal entirely.
+    """
+    if weights is None:
+        weights = [1.0] * len(ranked_id_lists)
     fused: dict[str, float] = {}
-    for ranked in ranked_id_lists:
+    for w, ranked in zip(weights, ranked_id_lists):
         for rank, cid in enumerate(ranked):
-            fused[cid] = fused.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
+            fused[cid] = fused.get(cid, 0.0) + w / (rrf_k + rank + 1)
     # Tie-break on chunk_id so equal fused scores produce a stable order
     # regardless of dict insertion order or upstream ranking jitter.
     return sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
@@ -198,7 +209,14 @@ class PineconeStore:
         return [(self.chunks[int(i)], float(scores[i])) for i in idx]
 
     def hybrid(
-        self, query: str, query_vec: np.ndarray, k: int, *, ticker: str | None = None
+        self,
+        query: str,
+        query_vec: np.ndarray,
+        k: int,
+        *,
+        ticker: str | None = None,
+        dense_weight: float = 1.0,
+        sparse_weight: float = 1.0,
     ) -> list[tuple[Chunk, float]]:
         pool = max(k, config.RETRIEVE_K)
         dense_hits = self.dense(query_vec, pool, ticker=ticker)
@@ -207,5 +225,6 @@ class PineconeStore:
         fused = rrf_fuse(
             [[c.chunk_id for c, _ in dense_hits], [c.chunk_id for c, _ in sparse_hits]],
             k,
+            weights=[dense_weight, sparse_weight],
         )
         return [(by_id[cid], score) for cid, score in fused]

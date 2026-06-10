@@ -7,25 +7,18 @@ Query:  hybrid retrieve (Pinecone dense + local BM25) -> cross-encoder rerank ->
 """
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass, field
 
 import config
-from . import embeddings, ingest, telemetry
+from . import embeddings, ingest, router, telemetry
 from .chunking import Chunk, chunk_document
 from .generate import Answer, generate
 from .rerank import rerank
+from .router import is_smalltalk, mentioned_tickers  # re-exported for callers
 from .vectorstore import PineconeStore
 
-# Conversational inputs that should be answered directly instead of triggering a
-# retrieval (otherwise "hi" pulls random chunks and the generator refuses).
-_GREETING_RE = re.compile(
-    r"^(hi|hey+|hello|yo|sup|howdy|gm|good\s+(morning|afternoon|evening)|"
-    r"thanks?|thank\s+you|thx|ty|ok(ay)?|cool|nice|great|bye|goodbye|"
-    r"who\s+are\s+you|what\s+can\s+you\s+do|help|test)[\s!.?]*$",
-    re.IGNORECASE,
-)
+__all__ = ["RAGPipeline", "RAGResult", "build_indexes", "is_smalltalk", "mentioned_tickers"]
 
 
 def _smalltalk_reply() -> str:
@@ -39,35 +32,6 @@ def _smalltalk_reply() -> str:
         "- *What does NVIDIA report about its Data Center business?*\n"
         "- *What risk factors does Amazon disclose?*"
     )
-
-
-def is_smalltalk(query: str) -> bool:
-    q = query.strip()
-    # Greetings/thanks, or a very short fragment with no question intent.
-    return bool(_GREETING_RE.match(q)) or len(q) < 3
-
-
-# Name aliases beyond the ticker itself, so "compare Apple and Google sales"
-# is recognised as a multi-company query the same way "AAPL GOOGL" is. 10-K
-# bodies use company names, never tickers, so detection must cover both.
-_NAME_ALIASES: dict[str, tuple[str, ...]] = {
-    "AAPL": ("apple",),
-    "NVDA": ("nvidia",),
-    "MSFT": ("microsoft",),
-    "GOOGL": ("alphabet", "google"),
-    "AMZN": ("amazon",),
-}
-
-
-def mentioned_tickers(query: str) -> list[str]:
-    """Tickers explicitly named in the query (by symbol or company name)."""
-    q = query.lower()
-    found = []
-    for tk in config.COMPANIES:
-        aliases = (tk.lower(),) + _NAME_ALIASES.get(tk, ())
-        if any(re.search(rf"\b{re.escape(a)}\b", q) for a in aliases):
-            found.append(tk)
-    return found
 
 
 # --- Build -------------------------------------------------------------------
@@ -144,6 +108,7 @@ class RAGResult:
     retrieved: list[Chunk]
     strategy: str
     reranked: bool
+    route: str = ""
     trace: telemetry.QueryTrace | None = field(default=None)
 
 
@@ -152,9 +117,21 @@ class RAGPipeline:
         self.strategy = strategy
         self.store = PineconeStore(strategy)
 
-    def retrieve(self, query: str, k: int = config.RETRIEVE_K) -> list[Chunk]:
+    def retrieve(
+        self,
+        query: str,
+        k: int = config.RETRIEVE_K,
+        *,
+        dense_weight: float = 1.0,
+        sparse_weight: float = 1.0,
+    ) -> list[Chunk]:
         qvec = embeddings.embed_query(query)
-        return [c for c, _ in self.store.hybrid(query, qvec, k)]
+        return [
+            c
+            for c, _ in self.store.hybrid(
+                query, qvec, k, dense_weight=dense_weight, sparse_weight=sparse_weight
+            )
+        ]
 
     def retrieve_per_ticker(
         self, query: str, tickers: list[str], *, per_company: int
@@ -182,29 +159,37 @@ class RAGPipeline:
         use_rerank: bool = True,
         top_k: int = config.TOP_K,
     ) -> RAGResult:
-        if is_smalltalk(query):
+        r = router.route(query)
+        if r.kind == router.SMALLTALK:
             return RAGResult(
                 query=query,
                 answer=Answer(text=_smalltalk_reply(), sources=[], refused=False),
                 retrieved=[],
                 strategy=self.strategy,
                 reranked=False,
+                route=r.kind,
             )
 
-        tickers = mentioned_tickers(query)
         t0 = time.perf_counter()
-        if len(tickers) >= 2:
+        if r.kind == router.COMPARISON:
             # Comparison query: guarantee coverage with a per-company quota
             # instead of a flat top-k that one company can monopolise. The
             # cross-encoder is skipped here (see retrieve_per_ticker), so the
             # rerank toggle does not apply.
-            per_company = max(3, -(-top_k // len(tickers)))  # ceil(top_k / n), min 3
-            top = self.retrieve_per_ticker(query, tickers, per_company=per_company)
+            per_company = max(3, -(-top_k // len(r.tickers)))  # ceil(top_k / n), min 3
+            top = self.retrieve_per_ticker(query, list(r.tickers), per_company=per_company)
             reranked = False
             t1 = t2 = time.perf_counter()
         else:
+            # LEXICAL / SEMANTIC / HYBRID all run weighted hybrid retrieval; the
+            # router only shifts the dense/BM25 fusion weights (see router.route).
             reranked = use_rerank
-            candidates = self.retrieve(query, config.RETRIEVE_K)
+            candidates = self.retrieve(
+                query,
+                config.RETRIEVE_K,
+                dense_weight=r.dense_weight,
+                sparse_weight=r.sparse_weight,
+            )
             t1 = time.perf_counter()
             if use_rerank:
                 top = [c for c, _ in rerank(query, candidates, top_k)]
@@ -219,6 +204,7 @@ class RAGPipeline:
             strategy=self.strategy,
             reranked=reranked,
             refused=ans.refused,
+            route=r.kind,
             candidates=[{"chunk_id": c.chunk_id} for c in top],
             retrieval_ms=round((t1 - t0) * 1000, 1),
             rerank_ms=round((t2 - t1) * 1000, 1),
@@ -245,5 +231,6 @@ class RAGPipeline:
             retrieved=top,
             strategy=self.strategy,
             reranked=reranked,
+            route=r.kind,
             trace=trace,
         )

@@ -40,6 +40,7 @@ class QueryTrace:
     strategy: str
     reranked: bool
     refused: bool
+    route: str = ""  # router decision: smalltalk|comparison|lexical|semantic|hybrid
     candidates: list[dict] = field(default_factory=list)  # [{chunk_id, score}]
     retrieval_ms: float = 0.0
     rerank_ms: float = 0.0

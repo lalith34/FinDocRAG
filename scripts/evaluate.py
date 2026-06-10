@@ -76,9 +76,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-judge", action="store_true", help="skip the LLM faithfulness judge")
     ap.add_argument("--strategies", nargs="+", default=list(config.STRATEGIES))
+    ap.add_argument(
+        "--queries",
+        default="queries.json",
+        help="query/label file under eval/ (e.g. question_bank.json for the "
+        "150-question grounded bank). Default: the curated queries.json.",
+    )
     args = ap.parse_args()
 
-    queries = json.loads((config.EVAL_DIR / "queries.json").read_text())
+    queries = json.loads((config.EVAL_DIR / args.queries).read_text())
     answerable = [q for q in queries if not q["expect_refusal"]]
     refusal_qs = [q for q in queries if q["expect_refusal"]]
 

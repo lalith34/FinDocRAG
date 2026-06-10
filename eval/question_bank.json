@@ -1,0 +1,1802 @@
+[
+  {
+    "id": "qb001",
+    "category": "lexical",
+    "question": "iPhone net sales fiscal 2025",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "iphone"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb002",
+    "category": "lexical",
+    "question": "Apple effective tax rate 2025",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "effective tax"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb003",
+    "category": "lexical",
+    "question": "Greater China segment net sales",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "greater china"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb004",
+    "category": "lexical",
+    "question": "Services gross margin percentage",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb005",
+    "category": "lexical",
+    "question": "Research and development expense 2025",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "research and development"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb006",
+    "category": "lexical",
+    "question": "Azure and other cloud services revenue growth",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "azure"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb007",
+    "category": "lexical",
+    "question": "Intelligent Cloud operating income",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "intelligent cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb008",
+    "category": "lexical",
+    "question": "Microsoft Cloud revenue",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "microsoft cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb009",
+    "category": "lexical",
+    "question": "LinkedIn revenue",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "linkedin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb010",
+    "category": "lexical",
+    "question": "Productivity and Business Processes revenue",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "productivity and business processes"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb011",
+    "category": "lexical",
+    "question": "AWS net sales 2025",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "aws"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb012",
+    "category": "lexical",
+    "question": "Third-party seller services revenue",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "third-party seller"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb013",
+    "category": "lexical",
+    "question": "North America segment operating income",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "north america"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb014",
+    "category": "lexical",
+    "question": "Advertising services revenue",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "advertising"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb015",
+    "category": "lexical",
+    "question": "Subscription services net sales",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "subscription"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb016",
+    "category": "lexical",
+    "question": "Google Cloud revenues 2025",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb017",
+    "category": "lexical",
+    "question": "YouTube ads revenue",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "youtube"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb018",
+    "category": "lexical",
+    "question": "Google Search and other revenue",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google search"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb019",
+    "category": "lexical",
+    "question": "Other Bets operating loss",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "other bets"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb020",
+    "category": "lexical",
+    "question": "Total revenues 2025",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "total revenues"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb021",
+    "category": "lexical",
+    "question": "Data Center revenue fiscal 2026",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "data center"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb022",
+    "category": "lexical",
+    "question": "Gaming revenue",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "gaming"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb023",
+    "category": "lexical",
+    "question": "Compute and Networking segment operating income",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "compute & networking"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb024",
+    "category": "lexical",
+    "question": "Total revenue fiscal 2026",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "total revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb025",
+    "category": "lexical",
+    "question": "Professional Visualization revenue",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "professional visualization"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb026",
+    "category": "hybrid",
+    "question": "How did iPhone sales perform compared to the prior year?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "iphone"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb027",
+    "category": "hybrid",
+    "question": "What drove the change in Services revenue?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "services"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb028",
+    "category": "hybrid",
+    "question": "How is the Greater China segment performing for Apple?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "greater china"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb029",
+    "category": "hybrid",
+    "question": "What does Apple include in its Wearables, Home and Accessories category?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "wearables"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb030",
+    "category": "hybrid",
+    "question": "How did gross margin differ between Products and Services?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb031",
+    "category": "hybrid",
+    "question": "How did Azure contribute to Intelligent Cloud growth?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "azure"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb032",
+    "category": "hybrid",
+    "question": "What is included in the More Personal Computing segment?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "more personal computing"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb033",
+    "category": "hybrid",
+    "question": "How did Gaming revenue change after the Activision Blizzard acquisition?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "gaming"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb034",
+    "category": "hybrid",
+    "question": "How is Microsoft 365 Copilot described in the filing?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "copilot"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb035",
+    "category": "hybrid",
+    "question": "What drove Microsoft Cloud revenue growth?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "microsoft cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb036",
+    "category": "hybrid",
+    "question": "How did AWS revenue growth compare to the overall company?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "aws"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb037",
+    "category": "hybrid",
+    "question": "What does Amazon include in third-party seller services?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "third-party seller"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb038",
+    "category": "hybrid",
+    "question": "How did advertising services revenue trend year over year?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "advertising"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb039",
+    "category": "hybrid",
+    "question": "How profitable is the International segment?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "international"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb040",
+    "category": "hybrid",
+    "question": "What drove the change in North America operating income?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "north america"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb041",
+    "category": "hybrid",
+    "question": "How did Google Cloud's profitability change in 2025?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb042",
+    "category": "hybrid",
+    "question": "What makes up Google Services revenue?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google services"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb043",
+    "category": "hybrid",
+    "question": "How did YouTube advertising perform this year?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "youtube"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb044",
+    "category": "hybrid",
+    "question": "How much is Alphabet investing in AI infrastructure?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb045",
+    "category": "hybrid",
+    "question": "What is driving growth in Google Cloud?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb046",
+    "category": "hybrid",
+    "question": "How did Data Center revenue grow year over year?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "data center"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb047",
+    "category": "hybrid",
+    "question": "What products make up NVIDIA's networking business?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "networking"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb048",
+    "category": "hybrid",
+    "question": "How did Gaming revenue trend this year?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "gaming"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb049",
+    "category": "hybrid",
+    "question": "What is the role of CUDA in NVIDIA's platform?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "cuda"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb050",
+    "category": "hybrid",
+    "question": "How are Blackwell-architecture products described?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "blackwell"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb051",
+    "category": "comprehensive",
+    "question": "Summarize Apple's reportable operating segments and how each performed.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb052",
+    "category": "comprehensive",
+    "question": "Describe Apple's full product and services portfolio.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "iphone"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb053",
+    "category": "comprehensive",
+    "question": "Give a comprehensive overview of Apple's fiscal 2025 financial performance.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "net sales"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb054",
+    "category": "comprehensive",
+    "question": "Summarize how Apple distributes and sells its products and services.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "distribution"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb055",
+    "category": "comprehensive",
+    "question": "Provide an overview of Apple's liquidity and capital-return program.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "liquidity"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb056",
+    "category": "comprehensive",
+    "question": "Summarize all three of Microsoft's reportable segments and their components.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb057",
+    "category": "comprehensive",
+    "question": "Give a comprehensive overview of Microsoft's cloud business across segments.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb058",
+    "category": "comprehensive",
+    "question": "Describe Microsoft's overall fiscal 2025 revenue and profit performance.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb059",
+    "category": "comprehensive",
+    "question": "Summarize Microsoft's product and service offerings end to end.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "windows"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb060",
+    "category": "comprehensive",
+    "question": "Provide an overview of how AI is integrated across Microsoft's products.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "copilot"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb061",
+    "category": "comprehensive",
+    "question": "Summarize Amazon's three reportable segments and what each contains.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb062",
+    "category": "comprehensive",
+    "question": "Give a comprehensive overview of Amazon's revenue by category.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "net sales"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb063",
+    "category": "comprehensive",
+    "question": "Describe Amazon's overall financial performance for 2025.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb064",
+    "category": "comprehensive",
+    "question": "Summarize Amazon's fulfillment and logistics operations.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "fulfillment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb065",
+    "category": "comprehensive",
+    "question": "Provide an overview of Amazon's major investment and growth areas.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "invest"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb066",
+    "category": "comprehensive",
+    "question": "Summarize Alphabet's reportable segments and their main revenue lines.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb067",
+    "category": "comprehensive",
+    "question": "Give a comprehensive overview of how Alphabet generates revenue.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "revenues"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb068",
+    "category": "comprehensive",
+    "question": "Describe Alphabet's overall 2025 financial results.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb069",
+    "category": "comprehensive",
+    "question": "Summarize Alphabet's AI strategy across the business.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb070",
+    "category": "comprehensive",
+    "question": "Provide an overview of Other Bets and Alphabet's long-term investments.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "other bets"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb071",
+    "category": "comprehensive",
+    "question": "Summarize NVIDIA's reportable segments and market platforms.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb072",
+    "category": "comprehensive",
+    "question": "Give a comprehensive overview of NVIDIA's Data Center business.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "data center"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb073",
+    "category": "comprehensive",
+    "question": "Describe NVIDIA's overall fiscal 2026 financial performance.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb074",
+    "category": "comprehensive",
+    "question": "Summarize NVIDIA's full computing platform from chips to software.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "cuda"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb075",
+    "category": "comprehensive",
+    "question": "Provide an overview of NVIDIA's end markets and how each is performing.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "platform"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb076",
+    "category": "semantic",
+    "question": "Why does Apple believe its ecosystem keeps customers loyal?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "customer"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb077",
+    "category": "semantic",
+    "question": "How does Apple describe its approach to innovation and product development?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "research and development"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb078",
+    "category": "semantic",
+    "question": "What is Apple's philosophy on user privacy and data?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "privacy"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb079",
+    "category": "semantic",
+    "question": "How does Apple position itself against competitors?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb080",
+    "category": "semantic",
+    "question": "What does Apple say about its environmental responsibility commitments?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "environ"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb081",
+    "category": "semantic",
+    "question": "How does Microsoft describe its overall business strategy and vision?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb082",
+    "category": "semantic",
+    "question": "Why does Microsoft believe AI is a transformational opportunity?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb083",
+    "category": "semantic",
+    "question": "How does Microsoft approach competition in cloud computing?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb084",
+    "category": "semantic",
+    "question": "What is Microsoft's perspective on responsible AI?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "responsible"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb085",
+    "category": "semantic",
+    "question": "How does Microsoft describe its relationships with customers and partners?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "partner"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb086",
+    "category": "semantic",
+    "question": "How does Amazon describe its customer-centric philosophy?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "customer"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb087",
+    "category": "semantic",
+    "question": "Why does Amazon emphasize long-term thinking over short-term profit?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "long-term"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb088",
+    "category": "semantic",
+    "question": "How does Amazon approach competition across its businesses?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb089",
+    "category": "semantic",
+    "question": "What is Amazon's strategy for innovation and experimentation?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "innovat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb090",
+    "category": "semantic",
+    "question": "How does Amazon describe the role of its culture and workforce?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "employee"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb091",
+    "category": "semantic",
+    "question": "How does Alphabet describe its mission and approach to its users?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "users"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb092",
+    "category": "semantic",
+    "question": "Why does Alphabet believe AI is central to its future?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb093",
+    "category": "semantic",
+    "question": "How does Alphabet think about long-term, speculative investments?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "other bets"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb094",
+    "category": "semantic",
+    "question": "How does Alphabet approach competition in its markets?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb095",
+    "category": "semantic",
+    "question": "What is Alphabet's perspective on developing technology responsibly?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "responsib"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb096",
+    "category": "semantic",
+    "question": "How does NVIDIA describe the shift toward accelerated computing?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "accelerated"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb097",
+    "category": "semantic",
+    "question": "Why does NVIDIA believe AI represents a major platform transition?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb098",
+    "category": "semantic",
+    "question": "How does NVIDIA describe its full-stack approach?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "platform"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb099",
+    "category": "semantic",
+    "question": "How does NVIDIA position itself relative to competitors?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb100",
+    "category": "semantic",
+    "question": "What is NVIDIA's view on the future of its end markets?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "market"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb101",
+    "category": "analytics",
+    "question": "Calculate the year-over-year growth rate of Apple's total net sales and identify the largest contributor.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "net sales"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb102",
+    "category": "analytics",
+    "question": "How did Apple's gross margin percentage change year over year, and what drove it?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb103",
+    "category": "analytics",
+    "question": "Compare the gross margins of the Products and Services businesses.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb104",
+    "category": "analytics",
+    "question": "What share of total net sales did each geographic segment represent in 2025?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb105",
+    "category": "analytics",
+    "question": "How did Apple's effective tax rate change year over year, and why?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "effective tax"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb106",
+    "category": "analytics",
+    "question": "Calculate the year-over-year revenue growth for each of Microsoft's three segments.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb107",
+    "category": "analytics",
+    "question": "How did Microsoft's overall operating margin trend year over year?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb108",
+    "category": "analytics",
+    "question": "Which segment contributed the most to operating-income growth?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb109",
+    "category": "analytics",
+    "question": "Compare Azure's growth rate to the company's total revenue growth.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "azure"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb110",
+    "category": "analytics",
+    "question": "How did cost of revenue affect Microsoft's gross margin?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "cost of revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb111",
+    "category": "analytics",
+    "question": "Compare the operating margins of North America, International, and AWS.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb112",
+    "category": "analytics",
+    "question": "Calculate AWS's share of Amazon's total operating income.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "aws"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb113",
+    "category": "analytics",
+    "question": "Break down Amazon's year-over-year revenue growth by segment.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb114",
+    "category": "analytics",
+    "question": "How did Amazon's net income change, and what were the major drivers?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "net income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb115",
+    "category": "analytics",
+    "question": "What was the trend in operating cash flow versus capital expenditures?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "cash"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb116",
+    "category": "analytics",
+    "question": "Calculate Google Cloud's year-over-year growth and its operating-margin trajectory.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google cloud"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb117",
+    "category": "analytics",
+    "question": "What percentage of Alphabet's total revenue comes from advertising?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "advertising"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb118",
+    "category": "analytics",
+    "question": "Compare the operating-income contributions of Google Services and Google Cloud.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb119",
+    "category": "analytics",
+    "question": "How did Alphabet's consolidated operating margin change year over year?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "operating"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb120",
+    "category": "analytics",
+    "question": "Quantify the operating losses of Other Bets and their trend.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "other bets"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb121",
+    "category": "analytics",
+    "question": "Calculate the year-over-year growth rate of NVIDIA's Data Center revenue.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "data center"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb122",
+    "category": "analytics",
+    "question": "How did NVIDIA's gross margin change year over year, and why?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb123",
+    "category": "analytics",
+    "question": "What share of total revenue does each market platform represent?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb124",
+    "category": "analytics",
+    "question": "Compare the growth rates of the Compute and Networking and Graphics segments.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb125",
+    "category": "analytics",
+    "question": "How did operating income scale relative to revenue growth?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb126",
+    "category": "problems",
+    "question": "What supply-chain and supplier-concentration risks does Apple disclose?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "supplier"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb127",
+    "category": "problems",
+    "question": "What risks does Apple report related to its operations and manufacturing in China?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "china"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb128",
+    "category": "problems",
+    "question": "What legal and regulatory risks does Apple disclose about the App Store?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "app store"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb129",
+    "category": "problems",
+    "question": "What does Apple report about foreign-exchange and macroeconomic risks?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "foreign"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb130",
+    "category": "problems",
+    "question": "What competitive risks does Apple identify?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb131",
+    "category": "problems",
+    "question": "What cybersecurity risks does Microsoft disclose?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "security"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb132",
+    "category": "problems",
+    "question": "What risks does Microsoft report related to developing and deploying AI?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb133",
+    "category": "problems",
+    "question": "What does Microsoft say about datacenter capacity and operational risks?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "datacenter"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb134",
+    "category": "problems",
+    "question": "What legal, regulatory, and antitrust risks does Microsoft disclose?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "regulat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb135",
+    "category": "problems",
+    "question": "What competitive risks does Microsoft identify in cloud computing?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb136",
+    "category": "problems",
+    "question": "What risks does Amazon disclose about intense competition?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb137",
+    "category": "problems",
+    "question": "What operational and fulfillment risks does Amazon report?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "fulfillment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb138",
+    "category": "problems",
+    "question": "What regulatory and legal risks does Amazon identify?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "regulat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb139",
+    "category": "problems",
+    "question": "What does Amazon report about international operations and foreign-exchange risk?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "foreign"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb140",
+    "category": "problems",
+    "question": "What risks does Amazon disclose about expanding into new products and businesses?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "new"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb141",
+    "category": "problems",
+    "question": "What risks does Alphabet disclose about its dependence on advertising revenue?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "advertising"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb142",
+    "category": "problems",
+    "question": "What regulatory and antitrust risks does Alphabet report?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "regulat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb143",
+    "category": "problems",
+    "question": "What risks does Alphabet identify related to AI?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb144",
+    "category": "problems",
+    "question": "What does Alphabet disclose about competition for users and advertisers?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb145",
+    "category": "problems",
+    "question": "What privacy and data-protection risks does Alphabet report?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "privacy"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb146",
+    "category": "problems",
+    "question": "What risks does NVIDIA disclose about export controls and sales to China?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "export"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb147",
+    "category": "problems",
+    "question": "What supply and demand mismatch risks does NVIDIA report?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "supply"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb148",
+    "category": "problems",
+    "question": "What customer-concentration risks does NVIDIA identify?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "customer"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb149",
+    "category": "problems",
+    "question": "What competitive risks does NVIDIA disclose?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "compet"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb150",
+    "category": "problems",
+    "question": "What risks does NVIDIA report about product transitions and inventory?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "inventory"
+    ],
+    "expect_refusal": false
+  }
+]

@@ -9,6 +9,7 @@ import pytest
 from src import router
 from src.router import (
     COMPARISON,
+    CORPUS,
     HYBRID,
     LEXICAL,
     SEMANTIC,
@@ -23,6 +24,38 @@ def test_smalltalk_skips_retrieval(q):
     r = route(q)
     assert r.kind == SMALLTALK
     assert r.dense_weight == 0.0 and r.sparse_weight == 0.0
+
+
+# --- Corpus / meta -----------------------------------------------------------
+@pytest.mark.parametrize(
+    "q",
+    [
+        "What is in the corpus?",
+        "what's in your corpus",
+        "What companies can I ask about?",
+        "which companies do you have?",
+        "What filings do you have?",
+        "what documents are indexed?",
+        "list the companies you cover",
+        "how many 10-Ks do you have?",
+    ],
+)
+def test_corpus_questions_skip_retrieval(q):
+    r = route(q)
+    assert r.kind == CORPUS
+    assert r.dense_weight == 0.0 and r.sparse_weight == 0.0
+
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        "What companies have the highest revenue?",  # content question, no meta cue
+        "What were Apple's total net sales",          # names a company
+        "what does the company say about its segments",
+    ],
+)
+def test_content_questions_are_not_corpus(q):
+    assert route(q).kind != CORPUS
 
 
 # --- Comparison --------------------------------------------------------------
@@ -124,11 +157,11 @@ def test_route_is_deterministic():
 )
 def test_router_never_raises_on_adversarial_input(q):
     r = route(q)
-    assert r.kind in {SMALLTALK, COMPARISON, LEXICAL, SEMANTIC, HYBRID}
+    assert r.kind in {SMALLTALK, CORPUS, COMPARISON, LEXICAL, SEMANTIC, HYBRID}
     # Weights are always non-negative and finite.
     assert r.dense_weight >= 0 and r.sparse_weight >= 0
 
 
 def test_route_kinds_are_distinct_constants():
-    kinds = {SMALLTALK, COMPARISON, LEXICAL, SEMANTIC, HYBRID}
-    assert len(kinds) == 5
+    kinds = {SMALLTALK, CORPUS, COMPARISON, LEXICAL, SEMANTIC, HYBRID}
+    assert len(kinds) == 6

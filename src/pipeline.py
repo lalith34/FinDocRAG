@@ -34,6 +34,29 @@ def _smalltalk_reply() -> str:
     )
 
 
+def _corpus_reply() -> str:
+    """Deterministic listing of every indexed filing, built from the corpus
+    metadata rather than retrieval — so a "what is in the corpus?" question
+    always reports all companies, not just the few nearest to the query."""
+    docs = ingest.load_processed()
+    if docs:
+        rows = [
+            f"- **{docs[t]['meta']['company']} ({t})** — "
+            f"{docs[t]['meta']['form']} filed {docs[t]['meta']['filing_date']}"
+            for t in sorted(docs)
+        ]
+        n = len(docs)
+    else:  # index not built yet; fall back to the configured corpus
+        rows = [f"- **{name} ({tk})**" for tk, name in config.COMPANIES.items()]
+        n = len(config.COMPANIES)
+    body = "\n".join(rows)
+    return (
+        f"I have the latest SEC 10-K filings for these {n} companies indexed:\n\n"
+        f"{body}\n\n"
+        "Ask me anything about their financials, segments, risks, or disclosures."
+    )
+
+
 # --- Build -------------------------------------------------------------------
 def build_indexes(
     strategies=config.STRATEGIES,
@@ -168,10 +191,11 @@ class RAGPipeline:
     ) -> RAGResult:
         model = model or config.CHAT_MODEL
         r = router.route(query)
-        if r.kind == router.SMALLTALK:
+        if r.kind in (router.SMALLTALK, router.CORPUS):
+            text = _corpus_reply() if r.kind == router.CORPUS else _smalltalk_reply()
             return RAGResult(
                 query=query,
-                answer=Answer(text=_smalltalk_reply(), sources=[], refused=False),
+                answer=Answer(text=text, sources=[], refused=False),
                 retrieved=[],
                 strategy=self.strategy,
                 reranked=False,

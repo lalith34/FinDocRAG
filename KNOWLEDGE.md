@@ -115,6 +115,7 @@ would reintroduce nondeterminism and add latency/cost to every query). Returns a
 | Route | Trigger | Effect |
 |---|---|---|
 | `SMALLTALK` | greeting / <3 chars | skip retrieval, canned reply |
+| `CORPUS` | meta-question about what's indexed, no company named (e.g. "what is in the corpus?", "which companies do you have?") | skip retrieval, list all filings from corpus metadata |
 | `COMPARISON` | ≥2 companies named | per-company dense quota (no rerank) |
 | `LEXICAL` | exact-match signals dominate | dense=1, sparse=2 |
 | `SEMANTIC` | conceptual cues dominate | dense=2, sparse=1 |
@@ -184,7 +185,7 @@ XBRL noise on multi-company queries).
 | `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`) |
 | `python -m scripts.ask "..."` | one-off CLI query (`--strategy`, `--no-rerank`, `--top-k`) |
 | `python -m scripts.smoke_test` | offline path check (no API key): ingest, both chunkers w/ fake embedder, BM25, RRF |
-| `streamlit run app.py` | chatbot: answer-model dropdown, rerank toggle, top-k slider, optional password gate |
+| `streamlit run app.py` | chatbot: answer-model dropdown, rerank toggle, top-k slider |
 
 ## 13. Config knobs — `config.py`
 
@@ -192,7 +193,7 @@ Corpus (`COMPANIES`), models (`EMBED_MODEL`, `CHAT_MODEL`, `CHAT_MODELS`,
 `GEN_SEED`, `MODEL_PRICES`), Pinecone (`PINECONE_INDEX_NAME`, cloud/region),
 reranker (`RERANK_ONNX_MODEL`), chunking (`FIXED_*`, `SEMANTIC_*`), retrieval
 (`TOP_K=5`, `RETRIEVE_K=20`, `RRF_K=60`), and `REFUSAL_TEXT`. Secrets via `.env`
-(`OPENAI_API_KEY`, `PINECONE_API_KEY`, optional `APP_PASSWORD`).
+(`OPENAI_API_KEY`, `PINECONE_API_KEY`).
 
 ## 14. Reproducibility design (the through-line)
 

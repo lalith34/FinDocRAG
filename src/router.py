@@ -15,6 +15,7 @@ retrieval for smalltalk; per-company quota for comparisons).
 
 Routes:
   SMALLTALK   greeting / trivially short input        -> skip retrieval
+  CORPUS      meta-question about what is indexed      -> skip retrieval
   COMPARISON  two or more companies named             -> per-company dense
   LEXICAL     exact-match signals dominate            -> upweight BM25
   SEMANTIC    conceptual natural-language question     -> upweight dense
@@ -36,6 +37,7 @@ import config
 
 # --- Route kinds -------------------------------------------------------------
 SMALLTALK = "smalltalk"
+CORPUS = "corpus"
 COMPARISON = "comparison"
 LEXICAL = "lexical"
 SEMANTIC = "semantic"
@@ -66,6 +68,37 @@ def is_smalltalk(query: str) -> bool:
     q = query.strip()
     # Greetings/thanks, or a very short fragment with no question intent.
     return bool(_GREETING_RE.match(q)) or len(q) < 3
+
+
+# --- Corpus / meta questions -------------------------------------------------
+# Questions about *what the assistant has indexed* (the corpus itself), not
+# questions answered *from* the filings. These must skip retrieval: "what is in
+# the corpus?" matches no 10-K chunk, so hybrid retrieval returns an arbitrary
+# 2-4 companies' chunks and the listing comes out incomplete. Answering directly
+# from the corpus metadata guarantees all companies are always reported.
+_CORPUS_DIRECT = ("corpus", "knowledge base", "knowledgebase")
+_CORPUS_SUBJECTS = (
+    "companies", "company", "filings", "filing", "documents", "document",
+    "tickers", "ticker", "10-k", "10-ks", "10k", "10ks", "index",
+)
+# A meta cue distinguishes "which companies do you have?" (corpus) from
+# "what companies have the highest revenue?" (a content question).
+_CORPUS_META_CUES = (
+    "do you have", "do you cover", "do you support", "can i ask", "can i query",
+    "are available", "is available", "are there", "are indexed", "is indexed",
+    "are loaded", "are covered", "you have", "you cover", "available", "indexed",
+    "what is in", "what's in", "in the corpus", "in your", "list",
+)
+
+
+def is_corpus_query(query: str) -> bool:
+    """True for meta-questions about the indexed corpus itself. Caller should
+    only treat a query as CORPUS when no specific company is named, so that
+    "what filings does Apple have?" still scopes to Apple's content instead."""
+    q = query.lower()
+    if any(t in q for t in _CORPUS_DIRECT):
+        return True
+    return any(s in q for s in _CORPUS_SUBJECTS) and any(m in q for m in _CORPUS_META_CUES)
 
 
 # --- Company detection -------------------------------------------------------
@@ -170,6 +203,10 @@ def route(query: str) -> Route:
         return Route(SMALLTALK, 0.0, 0.0, reason="greeting/short input")
 
     tickers = mentioned_tickers(q)
+    # A corpus/meta question with no specific company named is answered directly
+    # from the corpus metadata, not via retrieval (see is_corpus_query).
+    if not tickers and is_corpus_query(q):
+        return Route(CORPUS, 0.0, 0.0, reason="corpus/meta question")
     if len(tickers) >= 2:
         return Route(
             COMPARISON,

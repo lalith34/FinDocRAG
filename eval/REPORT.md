@@ -19,27 +19,27 @@
 
 ## 1. Chunking strategy comparison (hybrid retrieval, no rerank)
 
-Metrics @k=5 over 11 answerable queries.
+Metrics @k=5 over 29 answerable queries.
 
 | Strategy | Hit@k | MRR | Precision@k |
 |---|---|---|---|
-| fixed | 1.00 | 0.955 | 0.745 |
-| semantic | 1.00 | 0.927 | 0.691 |
+| fixed | 0.90 | 0.813 | 0.648 |
+| semantic | 0.93 | 0.852 | 0.648 |
 
 ## 2. Reranking impact (hybrid retrieval, with vs without reranker)
 
 | Strategy | Variant | Hit@k | MRR | Precision@k |
 |---|---|---|---|---|
-| fixed | retrieval-only | 1.00 | 0.955 | 0.745 |
-| fixed | + rerank | 1.00 | 0.955 | 0.800 |
-| semantic | retrieval-only | 1.00 | 0.927 | 0.691 |
-| semantic | + rerank | 1.00 | 1.000 | 0.855 |
+| fixed | retrieval-only | 0.90 | 0.813 | 0.648 |
+| fixed | + rerank | 0.97 | 0.871 | 0.669 |
+| semantic | retrieval-only | 0.93 | 0.852 | 0.648 |
+| semantic | + rerank | 0.97 | 0.897 | 0.662 |
 
 ## 3. Generation quality (LLM judge, full pipeline)
 
-- Faithfulness: **100%**
-- Relevance: **100%**
+- Faithfulness: **93%**
+- Relevance: **93%**
 
 ## 4. Refusal path
 
-- Unanswerable queries correctly refused: **1/1**
+- Unanswerable queries correctly refused: **3/3**

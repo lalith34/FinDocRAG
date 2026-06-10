@@ -47,6 +47,29 @@ def is_smalltalk(query: str) -> bool:
     return bool(_GREETING_RE.match(q)) or len(q) < 3
 
 
+# Name aliases beyond the ticker itself, so "compare Apple and Google sales"
+# is recognised as a multi-company query the same way "AAPL GOOGL" is. 10-K
+# bodies use company names, never tickers, so detection must cover both.
+_NAME_ALIASES: dict[str, tuple[str, ...]] = {
+    "AAPL": ("apple",),
+    "NVDA": ("nvidia",),
+    "MSFT": ("microsoft",),
+    "GOOGL": ("alphabet", "google"),
+    "AMZN": ("amazon",),
+}
+
+
+def mentioned_tickers(query: str) -> list[str]:
+    """Tickers explicitly named in the query (by symbol or company name)."""
+    q = query.lower()
+    found = []
+    for tk in config.COMPANIES:
+        aliases = (tk.lower(),) + _NAME_ALIASES.get(tk, ())
+        if any(re.search(rf"\b{re.escape(a)}\b", q) for a in aliases):
+            found.append(tk)
+    return found
+
+
 # --- Build -------------------------------------------------------------------
 def build_indexes(
     strategies=config.STRATEGIES, *, do_ingest: bool = True, force: bool = False
@@ -129,6 +152,25 @@ class RAGPipeline:
         qvec = embeddings.embed_query(query)
         return [c for c, _ in self.store.hybrid(query, qvec, k)]
 
+    def retrieve_per_ticker(
+        self, query: str, tickers: list[str], *, per_company: int
+    ) -> list[Chunk]:
+        """Retrieve a per-company quota so every named company is represented in
+        the final context. A flat top-k lets the best-matching company
+        monopolise the slots, which is why cross-company comparisons used to
+        drop companies and refuse.
+
+        Uses dense retrieval per company and deliberately skips the
+        cross-encoder: on a multi-company query ("AAPL NVDA MSFT ... sales")
+        the reranker scores every chunk as irrelevant and buries each company's
+        income-statement table below XBRL-tag noise. Dense similarity, filtered
+        per ticker, puts that table at/near rank 1 for each company."""
+        qvec = embeddings.embed_query(query)
+        out: list[Chunk] = []
+        for tk in tickers:
+            out.extend(c for c, _ in self.store.dense(qvec, per_company, ticker=tk))
+        return out
+
     def answer(
         self,
         query: str,
@@ -145,22 +187,33 @@ class RAGPipeline:
                 reranked=False,
             )
 
+        tickers = mentioned_tickers(query)
         t0 = time.perf_counter()
-        candidates = self.retrieve(query, config.RETRIEVE_K)
-        t1 = time.perf_counter()
-        if use_rerank:
-            reranked_pairs = rerank(query, candidates, top_k)
-            top = [c for c, _ in reranked_pairs]
+        if len(tickers) >= 2:
+            # Comparison query: guarantee coverage with a per-company quota
+            # instead of a flat top-k that one company can monopolise. The
+            # cross-encoder is skipped here (see retrieve_per_ticker), so the
+            # rerank toggle does not apply.
+            per_company = max(3, -(-top_k // len(tickers)))  # ceil(top_k / n), min 3
+            top = self.retrieve_per_ticker(query, tickers, per_company=per_company)
+            reranked = False
+            t1 = t2 = time.perf_counter()
         else:
-            top = candidates[:top_k]
-        t2 = time.perf_counter()
+            reranked = use_rerank
+            candidates = self.retrieve(query, config.RETRIEVE_K)
+            t1 = time.perf_counter()
+            if use_rerank:
+                top = [c for c, _ in rerank(query, candidates, top_k)]
+            else:
+                top = candidates[:top_k]
+            t2 = time.perf_counter()
         ans = generate(query, top)
         t3 = time.perf_counter()
 
         trace = telemetry.QueryTrace(
             query=query,
             strategy=self.strategy,
-            reranked=use_rerank,
+            reranked=reranked,
             refused=ans.refused,
             candidates=[{"chunk_id": c.chunk_id} for c in top],
             retrieval_ms=round((t1 - t0) * 1000, 1),
@@ -185,6 +238,6 @@ class RAGPipeline:
             answer=ans,
             retrieved=top,
             strategy=self.strategy,
-            reranked=use_rerank,
+            reranked=reranked,
             trace=trace,
         )

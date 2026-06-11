@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 
 import config
-from . import embeddings, ingest, router, telemetry
+from . import embeddings, ingest, pageindex, router, telemetry
 from .chunking import Chunk, chunk_document
 from .generate import Answer, generate
 from .rerank import rerank
@@ -132,6 +132,8 @@ class RAGResult:
     strategy: str
     reranked: bool
     route: str = ""
+    retriever: str = "vector"
+    nav_path: str = ""  # PageIndex reasoning path, when that retriever was used
     trace: telemetry.QueryTrace | None = field(default=None)
 
 
@@ -139,6 +141,14 @@ class RAGPipeline:
     def __init__(self, strategy: str = "semantic"):
         self.strategy = strategy
         self.store = PineconeStore(strategy)
+        self._pageindex: pageindex.PageIndexRetriever | None = None
+
+    def pageindex(self) -> pageindex.PageIndexRetriever:
+        """Lazily construct the tree-navigation retriever (builds a ticker's tree
+        on first use and memoises it for the process)."""
+        if self._pageindex is None:
+            self._pageindex = pageindex.PageIndexRetriever()
+        return self._pageindex
 
     def retrieve(
         self,
@@ -188,6 +198,7 @@ class RAGPipeline:
         use_rerank: bool = True,
         top_k: int = config.TOP_K,
         model: str | None = None,
+        retriever: str = "vector",
     ) -> RAGResult:
         model = model or config.CHAT_MODEL
         r = router.route(query)
@@ -200,10 +211,28 @@ class RAGPipeline:
                 strategy=self.strategy,
                 reranked=False,
                 route=r.kind,
+                retriever=retriever,
             )
 
+        # PageIndex is a per-document retriever: it only applies when retrieval
+        # scopes to a single named filing. Comparison/unscoped queries fan out
+        # across documents, which tree-navigation does not do, so they fall back
+        # to the vector path. The retrieval-arm actually used is reported below.
+        use_pageindex = (
+            retriever == "pageindex"
+            and r.kind != router.COMPARISON
+            and len(r.tickers) == 1
+        )
+
         t0 = time.perf_counter()
-        if r.kind == router.COMPARISON:
+        nav_path = ""
+        if use_pageindex:
+            top, nav_path, _reasoning = self.pageindex().retrieve(
+                query, r.tickers[0], top_k
+            )
+            reranked = False
+            t1 = t2 = time.perf_counter()
+        elif r.kind == router.COMPARISON:
             # Comparison query: guarantee coverage with a per-company quota
             # instead of a flat top-k that one company can monopolise. The
             # cross-encoder is skipped here (see retrieve_per_ticker), so the
@@ -237,12 +266,13 @@ class RAGPipeline:
         ans = generate(query, top, model=model, reorder=r.kind != router.COMPARISON)
         t3 = time.perf_counter()
 
+        arm = "pageindex" if use_pageindex else "vector"
         trace = telemetry.QueryTrace(
             query=query,
             strategy=self.strategy,
             reranked=reranked,
             refused=ans.refused,
-            route=r.kind,
+            route=f"{r.kind}/{arm}",
             candidates=[{"chunk_id": c.chunk_id} for c in top],
             retrieval_ms=round((t1 - t0) * 1000, 1),
             rerank_ms=round((t2 - t1) * 1000, 1),
@@ -270,5 +300,7 @@ class RAGPipeline:
             strategy=self.strategy,
             reranked=reranked,
             route=r.kind,
+            retriever=arm,
+            nav_path=nav_path,
             trace=trace,
         )

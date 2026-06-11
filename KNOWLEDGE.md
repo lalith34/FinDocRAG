@@ -50,6 +50,7 @@ re-embedded / re-upserted.
 | What is the **BM25 / eval** source of truth? | local `data/index/<strategy>/chunks.json` (text + metadata, no vectors) | `PineconeStore._load_chunks` |
 | What **chunking** strategies exist? | `fixed` (token window) and `semantic` (breakpoint) | [src/chunking.py](src/chunking.py) |
 | How is **retrieval** done? | hybrid dense + BM25, fused with RRF, weights set by router | `PineconeStore.hybrid` + [src/router.py](src/router.py) |
+| Is there a **vectorless** retriever? | PageIndex: LLM navigates a tree of the filing's 10-K Items (single-company only) | [src/pageindex.py](src/pageindex.py), `answer(retriever="pageindex")` |
 | Where is **reranking**? | local ONNX cross-encoder (fastembed, no torch) | [src/rerank.py](src/rerank.py) |
 | Where is the **answer generated**? | gpt-4o (seeded), cite-everything prompt, refusal path | [src/generate.py](src/generate.py) |
 | Where is the **model chosen**? | `config.CHAT_MODELS`; UI dropdown → `answer(model=…)` → `generate` | [config.py](config.py), [app.py](app.py) |
@@ -149,6 +150,33 @@ it falls back to the original retrieval order. Tie-broken by `chunk_id` for
 reproducibility. Skipped on COMPARISON queries (the per-company dense path beats
 the reranker, which tends to bury each company's income-statement table under
 XBRL noise on multi-company queries).
+
+## 8b. PageIndex (vectorless) — `src/pageindex.py`
+
+An **alternative retriever** that reasons over document structure instead of
+embedding similarity — the "is PageIndex better than a vector DB?" experiment,
+productionised. Selectable per query: `RAGPipeline.answer(retriever="pageindex")`
+and the UI's **Retriever** radio.
+
+- **Tree** = the filing's 10-K Items (branches) × their chunks (leaves), each leaf
+  summarised to one line by `gpt-4o-mini` **once** and cached to
+  `data/pageindex/<TICKER>_tree.json`. Built lazily per ticker on first use and
+  memoised for the process. Leaves come from the `fixed` snapshot, read locally
+  (no Pinecone needed for navigation).
+- **Navigate** = one `gpt-4o` call reads the whole tree (Item labels + leaf
+  summaries, not full text) and returns `{section, reasoning, node_ids}`. The
+  retriever validates the ids against the tree (drops hallucinated ones) and caps
+  at top-k. Output carries an **auditable path** (`Item 1A — Risk Factors →
+  MSFT-fixed-0019…`), surfaced on `RAGResult.nav_path` and in the UI.
+- **Scope / fallback**: per-document only. The pipeline routes to it **only** for
+  single-company, non-comparison queries; COMPARISON / unscoped questions fall
+  back to the vector arm, and `RAGResult.retriever` reports which arm actually ran.
+- **Trade-off** (see `eval/pageindex_msft_report.md`): competitive faithfulness,
+  higher MRR, fewer/more-precise leaves, and a traceable path — at the cost of a
+  full LLM call's latency per query vs an ANN lookup. "Deterministic" only under
+  `temperature=0` + seed, same caveat as generation.
+- Benchmark: `python -m scripts.pageindex_eval` (30 MSFT questions, both arms,
+  custom judge + RAGAS with filing-verified references).
 
 ## 9. Generate — `src/generate.py`
 

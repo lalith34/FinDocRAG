@@ -53,7 +53,20 @@ with st.sidebar:
     # prefer semantic (best in the eval), else whatever index is built.
     strategy = "semantic" if "semantic" in available else available[-1]
     model = st.selectbox("Answer model", config.CHAT_MODELS, index=0)
-    use_rerank = st.toggle("Rerank candidates", value=True)
+    retriever = st.radio(
+        "Retriever",
+        ["vector", "pageindex"],
+        format_func=lambda r: {
+            "vector": "Vector (Pinecone hybrid + rerank)",
+            "pageindex": "PageIndex (tree navigation)",
+        }[r],
+        help="Vector: dense+BM25 nearest-neighbour with a cross-encoder rerank. "
+        "PageIndex: an LLM reasons over a tree of the filing's 10-K Items and "
+        "navigates to the answer, returning the path it took. PageIndex applies "
+        "to single-company questions; comparisons fall back to vector.",
+    )
+    use_rerank = st.toggle("Rerank candidates", value=True,
+                           disabled=retriever == "pageindex")
     top_k = st.slider("Sources (top-k)", 1, 10, config.TOP_K)
     st.divider()
     st.markdown("**Corpus**")
@@ -82,6 +95,8 @@ def render_sources(sources: list[dict]) -> None:
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg.get("nav_path"):
+            st.caption(f"🧭 PageIndex path: `{msg['nav_path']}`")
         if msg.get("sources"):
             render_sources(msg["sources"])
         if msg.get("stats"):
@@ -97,8 +112,15 @@ if prompt := st.chat_input("e.g. What were Apple's total net sales last year?"):
     with st.chat_message("assistant"):
         with st.spinner("Retrieving and reading filings…"):
             pipe = load_pipeline(strategy)
-            result = pipe.answer(prompt, use_rerank=use_rerank, top_k=top_k, model=model)
+            result = pipe.answer(
+                prompt, use_rerank=use_rerank, top_k=top_k, model=model,
+                retriever=retriever,
+            )
         st.markdown(result.answer.text)
+        if result.nav_path:
+            st.caption(f"🧭 PageIndex path: `{result.nav_path}`")
+        elif retriever == "pageindex" and not result.answer.refused:
+            st.caption("🧭 PageIndex N/A for this query — used vector retrieval.")
         sources = [
             {
                 "n": s.n,
@@ -129,6 +151,7 @@ if prompt := st.chat_input("e.g. What were Apple's total net sales last year?"):
             "query": prompt,
             "sources": [] if result.answer.refused else sources,
             "stats": stats,
+            "nav_path": result.nav_path,
         }
     )
     st.rerun()

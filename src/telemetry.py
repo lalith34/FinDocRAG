@@ -41,6 +41,10 @@ class QueryTrace:
     reranked: bool
     refused: bool
     route: str = ""  # router decision: smalltalk|comparison|lexical|semantic|hybrid
+    # Guardrails: which input guard fired ("" if none — injection|advice|length),
+    # and any [n] citations the answer made that point at no real source.
+    guardrail: str = ""
+    dangling_citations: list[int] = field(default_factory=list)
     candidates: list[dict] = field(default_factory=list)  # [{chunk_id, score}]
     retrieval_ms: float = 0.0
     rerank_ms: float = 0.0

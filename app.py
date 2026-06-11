@@ -170,6 +170,19 @@ if prompt := st.chat_input("e.g. What were Apple's total net sales last year?"):
                 retriever=retriever,
             )
         st.markdown(result.answer.text)
+        if result.guardrail:
+            _label = {
+                "injection": "Blocked a prompt-injection / instruction-override attempt",
+                "advice": "Deflected an investment-advice request (no recommendations)",
+                "length": "Rejected an over-length query",
+            }.get(result.guardrail, result.guardrail)
+            st.caption(f"🛡️ Guardrail: {_label}")
+        if result.dangling_citations:
+            st.warning(
+                "⚠️ Citation guard: the answer referenced source number(s) "
+                f"{result.dangling_citations} that were not provided — treat those "
+                "claims with caution."
+            )
         if result.nav_path:
             st.caption(f"🧭 PageIndex path: `{result.nav_path}`")
         elif retriever == "pageindex" and not result.answer.refused:

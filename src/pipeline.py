@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 
 import config
-from . import embeddings, ingest, pageindex, router, telemetry
+from . import embeddings, guardrails, ingest, pageindex, router, telemetry
 from .chunking import Chunk, chunk_document
 from .generate import Answer, generate
 from .rerank import rerank
@@ -143,6 +143,8 @@ class RAGResult:
     route: str = ""
     retriever: str = "vector"
     nav_path: str = ""  # PageIndex reasoning path, when that retriever was used
+    guardrail: str = ""  # input guard that fired ("" if none): injection|advice|length
+    dangling_citations: list[int] = field(default_factory=list)
     trace: telemetry.QueryTrace | None = field(default=None)
 
 
@@ -216,6 +218,30 @@ class RAGPipeline:
         retriever: str = "vector",
     ) -> RAGResult:
         model = model or config.CHAT_MODEL
+
+        # Input guardrail (deterministic, pre-retrieval): block prompt injection /
+        # instruction-extraction and deflect investment-advice solicitation before
+        # any retrieval or model call happens. A blocked query returns a safe
+        # completion and is logged with the guard that fired.
+        guard = guardrails.check_input(query)
+        if not guard.allowed:
+            trace = telemetry.QueryTrace(
+                query=query, strategy=self.strategy, reranked=False, refused=False,
+                route=f"guardrail/{guard.reason}", guardrail=guard.reason, model=model,
+            )
+            telemetry.log_query(trace)
+            return RAGResult(
+                query=query,
+                answer=Answer(text=guard.reply, sources=[], refused=False),
+                retrieved=[],
+                strategy=self.strategy,
+                reranked=False,
+                route=f"guardrail/{guard.reason}",
+                retriever=retriever,
+                guardrail=guard.reason,
+                trace=trace,
+            )
+
         r = router.route(query)
         if r.kind in (router.SMALLTALK, router.CORPUS):
             text = _corpus_reply() if r.kind == router.CORPUS else _smalltalk_reply()
@@ -285,6 +311,16 @@ class RAGPipeline:
         ans = generate(query, top, model=model, reorder=r.kind != router.COMPARISON)
         t3 = time.perf_counter()
 
+        # Output guardrail: verify the answer's [n] citations point at real sources
+        # (catch invented references) and flag a substantive answer that cites
+        # nothing. Then append the standing not-advice / verify-against-source footer
+        # to grounded answers (skip refusals — the refusal text stands alone).
+        audit = guardrails.audit_citations(
+            ans.text, len(ans.sources), refused=ans.refused
+        )
+        if not ans.refused and ans.sources:
+            ans.text = guardrails.with_disclaimer(ans.text)
+
         arm = "pageindex" if use_pageindex else "vector"
         trace = telemetry.QueryTrace(
             query=query,
@@ -292,6 +328,7 @@ class RAGPipeline:
             reranked=reranked,
             refused=ans.refused,
             route=f"{r.kind}/{arm}",
+            dangling_citations=audit.dangling,
             candidates=[{"chunk_id": c.chunk_id} for c in top],
             retrieval_ms=round((t1 - t0) * 1000, 1),
             rerank_ms=round((t2 - t1) * 1000, 1),
@@ -321,5 +358,6 @@ class RAGPipeline:
             route=r.kind,
             retriever=arm,
             nav_path=nav_path,
+            dangling_citations=audit.dangling,
             trace=trace,
         )

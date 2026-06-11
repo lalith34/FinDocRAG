@@ -21,6 +21,7 @@ plus an evaluation report and a chatbot UI.
 | **Retrieve** | **Pinecone** serverless index (dense cosine, one namespace per strategy) + local BM25 sparse, fused with RRF; top-k=5 from a 20-candidate pool |
 | **Rerank** | Local **ONNX cross-encoder** (`fastembed`, no torch) reranks the candidate pool; impact measured in the eval |
 | **Generate** | `gpt-4o-2024-08-06` (dated snapshot, seeded for reproducibility), cite-everything prompt, **explicit refusal** when context is insufficient. The chatbot lets you pick the answer model. |
+| **Guardrails** | Deterministic, rule-based (no extra LLM call) — **input**: blocks prompt-injection / instruction-extraction, deflects investment-advice solicitation, caps query length; **output**: audits every `[n]` citation against real sources (flags invented references + ungrounded answers), appends a not-advice disclaimer. See [src/guardrails.py](src/guardrails.py). |
 
 ## Setup
 

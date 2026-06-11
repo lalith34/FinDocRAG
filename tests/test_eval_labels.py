@@ -55,4 +55,16 @@ def test_rank_metrics_hit_at_second_rank():
 def test_rank_metrics_no_hit():
     chunks = [make_chunk("MSFT", "unrelated")] * 3
     m = rank_metrics(chunks, QUERY, k=3)
-    assert m == {"hit": 0.0, "mrr": 0.0, "precision": 0.0}
+    assert m == {"hit": 0.0, "mrr": 0.0, "precision": 0.0, "ndcg": 0.0}
+
+
+def test_ndcg_rewards_higher_ranking():
+    """Same relevant chunk earns a higher NDCG when it ranks first vs second."""
+    first = rank_metrics(
+        [make_chunk("AAPL", "net sales"), make_chunk("MSFT", "x")], QUERY, k=2
+    )
+    second = rank_metrics(
+        [make_chunk("MSFT", "x"), make_chunk("AAPL", "net sales")], QUERY, k=2
+    )
+    assert first["ndcg"] == 1.0          # relevant chunk at rank 1 is ideal
+    assert second["ndcg"] < first["ndcg"]  # demoting it costs NDCG

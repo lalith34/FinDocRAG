@@ -140,6 +140,7 @@ class PineconeStore:
                     "strategy": c.strategy,
                     "position": c.position,
                     "token_count": c.token_count,
+                    "section": c.section,
                 },
             }
             for i, c in enumerate(chunks)
@@ -181,6 +182,7 @@ class PineconeStore:
             text=m.get("text", ""),
             token_count=int(m.get("token_count", 0)),
             position=int(m.get("position", 0)),
+            section=m.get("section", ""),
         )
 
     @pinecone_retry

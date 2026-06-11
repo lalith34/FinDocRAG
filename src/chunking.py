@@ -31,11 +31,83 @@ class Chunk:
     text: str
     token_count: int
     position: int  # ordinal within the document
+    section: str = ""  # 10-K item the chunk falls under (e.g. "Risk Factors")
     meta: dict = field(default_factory=dict)
 
 
 def n_tokens(text: str) -> int:
     return len(_ENC.encode(text))
+
+
+# --- 10-K section detection --------------------------------------------------
+# 10-Ks are organised into numbered "Items" (Item 1, 1A, 7, 8, ...). Tagging each
+# chunk with its section makes the source provenance legible ("this came from
+# Risk Factors") and enables metadata-filtered retrieval (deck S1 §7). The header
+# lines survive cleaning as plain text like "Item 1A. Risk Factors".
+#
+# The trailing `(?!\|)` rejects table-of-contents rows: a filing's TOC flattens to
+# pipe-delimited cells ("Item 7. | Management's Discussion | 31"), which would
+# otherwise register every item near the top of the document and corrupt the
+# carry-forward. A real section header is followed by its title text, not a pipe.
+_ITEM_RE = re.compile(r"(?im)^\s*item\s+(\d{1,2}[a-c]?)[.:)\s]\s*(?!\|)")
+# Canonical names for the items that actually matter in a mega-cap 10-K; anything
+# else falls back to "Item <n>" so the label is always meaningful.
+_SECTION_NAMES = {
+    "1": "Business",
+    "1A": "Risk Factors",
+    "1B": "Unresolved Staff Comments",
+    "1C": "Cybersecurity",
+    "2": "Properties",
+    "3": "Legal Proceedings",
+    "4": "Mine Safety Disclosures",
+    "5": "Market for Registrant's Common Equity",
+    "6": "Selected Financial Data",
+    "7": "Management's Discussion and Analysis",
+    "7A": "Quantitative and Qualitative Disclosures About Market Risk",
+    "8": "Financial Statements",
+    "9": "Changes in and Disagreements with Accountants",
+    "9A": "Controls and Procedures",
+    "9B": "Other Information",
+    "10": "Directors and Executive Officers",
+    "11": "Executive Compensation",
+    "12": "Security Ownership",
+    "13": "Certain Relationships and Related Transactions",
+    "14": "Principal Accountant Fees and Services",
+    "15": "Exhibits and Financial Statement Schedules",
+}
+
+
+def _section_label(item: str) -> str:
+    item = item.upper()
+    name = _SECTION_NAMES.get(item)
+    return f"Item {item} — {name}" if name else f"Item {item}"
+
+
+def detect_section(text: str) -> str | None:
+    """Return the canonical 10-K section label for the FIRST item header that
+    appears at a line start in `text`, or None if the text opens no new item."""
+    m = _ITEM_RE.search(text)
+    return _section_label(m.group(1)) if m else None
+
+
+def _section_spans(text: str) -> list[tuple[int, str]]:
+    """Ordered (char-offset, label) boundaries for every item header in the
+    *original* document. Detected once on the source text — where headers keep
+    their line breaks and the pipe-TOC is filtered out — so the labelling does
+    not depend on how a chunker later reflows whitespace."""
+    spans = [(0, "Front Matter")]
+    spans += [(m.start(), _section_label(m.group(1))) for m in _ITEM_RE.finditer(text)]
+    return spans
+
+
+def _label_at(spans: list[tuple[int, str]], offset: int) -> str:
+    """The section in force at `offset`: the last boundary at or before it."""
+    label = spans[0][1]
+    for off, lab in spans:
+        if off > offset:
+            break
+        label = lab
+    return label
 
 
 # --- Fixed-size --------------------------------------------------------------
@@ -152,16 +224,33 @@ def chunk_document(
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
-    return [
-        Chunk(
-            chunk_id=f"{ticker}-{strategy}-{i:04d}",
-            ticker=ticker,
-            company=company,
-            source_url=source_url,
-            strategy=strategy,
-            text=piece,
-            token_count=n_tokens(piece),
-            position=i,
+    # Label each chunk by where it begins in the *original* document. Chunks are
+    # emitted in document order, so a monotonically advancing cursor locates each
+    # piece's offset (a forward find on its opening text); the section is then the
+    # boundary in force at that offset. This is robust to the semantic chunker
+    # reflowing sentence newlines into spaces, which used to hide mid-document
+    # headers from a scan of the chunk text itself.
+    spans = _section_spans(text)
+    chunks: list[Chunk] = []
+    cursor = 0
+    for i, piece in enumerate(pieces):
+        probe = piece[:60].strip()
+        off = text.find(probe, cursor) if probe else -1
+        if off == -1:  # tokenizer/strip drift; keep position, inherit current span
+            off = cursor
+        else:
+            cursor = off + 1
+        chunks.append(
+            Chunk(
+                chunk_id=f"{ticker}-{strategy}-{i:04d}",
+                ticker=ticker,
+                company=company,
+                source_url=source_url,
+                strategy=strategy,
+                text=piece,
+                token_count=n_tokens(piece),
+                position=i,
+                section=_label_at(spans, off),
+            )
         )
-        for i, piece in enumerate(pieces)
-    ]
+    return chunks

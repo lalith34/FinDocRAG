@@ -15,8 +15,9 @@ from .chunking import Chunk
 from .reliability import make_openai_client, openai_retry
 
 _SYSTEM = f"""You are a financial analyst assistant. You answer questions ONLY \
-using the numbered SOURCES provided, which are excerpts from companies' SEC \
-10-K (annual) filings.
+using the SOURCES provided, which are excerpts from companies' SEC 10-K (annual) \
+filings. Each source is given as an <source id="N" ...> element; cite a fact by \
+that id as [N].
 
 IMPORTANT — these are ANNUAL filings. They contain full-fiscal-year figures \
 (usually the latest 2-3 years side by side in a table), and NEVER quarterly \
@@ -71,6 +72,7 @@ class Source:
     source_url: str
     chunk_id: str
     text: str
+    section: str = ""
 
 
 @dataclass
@@ -95,6 +97,17 @@ def _get_client():
     return _client
 
 
+def _order_for_context(chunks: list[Chunk]) -> list[Chunk]:
+    """Lay out relevance-ranked chunks to fight "lost in the middle" (deck S2 §9):
+    long-context models attend most to the start and end of the prompt and least
+    to the middle. Input is assumed best-first (the reranker's output); we put the
+    strongest chunk first, the second-strongest last, and bury weaker ones in the
+    middle. For [r1,r2,r3,r4,r5] this yields [r1,r3,r5,r4,r2]."""
+    front = chunks[0::2]          # ranks 1, 3, 5, ... at the front, in order
+    back = chunks[1::2][::-1]     # ranks 2, 4, ... at the back, reversed
+    return front + back
+
+
 def _build_sources(chunks: list[Chunk]) -> list[Source]:
     return [
         Source(
@@ -104,6 +117,7 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
             source_url=c.source_url,
             chunk_id=c.chunk_id,
             text=c.text,
+            section=c.section,
         )
         for i, c in enumerate(chunks)
     ]
@@ -119,16 +133,31 @@ def _chat(messages: list[dict], model: str):
     )
 
 
-def generate(query: str, chunks: list[Chunk], *, model: str | None = None) -> Answer:
+def generate(
+    query: str, chunks: list[Chunk], *, model: str | None = None, reorder: bool = True
+) -> Answer:
     model = model or config.CHAT_MODEL
+    # Reorder relevance-ranked chunks into the lost-in-the-middle layout. Skipped
+    # (reorder=False) for comparison queries, whose chunks are grouped per company
+    # rather than globally ranked, so interleaving them would scramble the groups.
+    if reorder and len(chunks) > 2:
+        chunks = _order_for_context(chunks)
     sources = _build_sources(chunks)
     if not sources:
         return Answer(text=config.REFUSAL_TEXT, sources=[], refused=True)
 
-    context = "\n\n".join(
-        f"[{s.n}] {s.company} ({s.ticker}) 10-K:\n{s.text}" for s in sources
+    # Structured <source> elements (deck S2 §9: "structured context > plain prose").
+    # The id is the citation number; the section gives the model the 10-K location.
+    context = "\n".join(
+        f'<source id="{s.n}" company="{s.company}" ticker="{s.ticker}"'
+        f'{f" section={s.section!r}" if s.section else ""}>\n{s.text}\n</source>'
+        for s in sources
     )
-    user = f"SOURCES:\n{context}\n\nQUESTION: {query}\n\nAnswer with citations:"
+    user = (
+        f"<context>\n{context}\n</context>\n\n"
+        f"<question>{query}</question>\n\n"
+        "Answer with citations:"
+    )
 
     resp = _chat(
         [

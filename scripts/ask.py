@@ -33,7 +33,8 @@ def main():
     if not result.answer.refused and result.answer.sources:
         print("\nSources:")
         for s in result.answer.sources:
-            print(f"  [{s.n}] {s.company} ({s.ticker})  {s.chunk_id}")
+            section = f"  ·  {s.section}" if s.section else ""
+            print(f"  [{s.n}] {s.company} ({s.ticker}){section}  {s.chunk_id}")
             print(f"      {s.source_url}")
 
 

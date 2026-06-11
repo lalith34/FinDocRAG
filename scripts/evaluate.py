@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
 from src import embeddings  # noqa: E402
-from src.eval_utils import rank_metrics  # noqa: E402
+from src.eval_utils import is_relevant, rank_metrics  # noqa: E402
 from src.generate import generate  # noqa: E402
 from src.reliability import make_openai_client, openai_retry  # noqa: E402
 from src.rerank import rerank  # noqa: E402
@@ -38,6 +38,17 @@ TOP_K = config.TOP_K
 
 def avg(rows: list[dict], key: str) -> float:
     return sum(r[key] for r in rows) / max(1, len(rows))
+
+
+def gold_chunks(store: PineconeStore, query: dict, k: int) -> list:
+    """The chunks the relevance labels say SHOULD be retrieved for this query.
+    Feeding these straight to the generator tests generation in isolation from
+    retrieval (deck S2 §12: "give the LLM the correct chunks, skip retrieval — if
+    the answer is wrong, the prompt is the bug"). Stable order by chunk_id."""
+    rel = sorted(
+        (c for c in store.chunks if is_relevant(c, query)), key=lambda c: c.chunk_id
+    )
+    return rel[:k]
 
 
 # --- LLM judge ---------------------------------------------------------------
@@ -117,6 +128,12 @@ def main():
         action="store_true",
         help="ignore any saved judge checkpoint and re-score every question.",
     )
+    ap.add_argument(
+        "--isolate-generation",
+        action="store_true",
+        help="also judge generation on the gold (label-relevant) chunks, skipping "
+        "retrieval, to separate retrieval failures from generation failures.",
+    )
     args = ap.parse_args()
 
     queries = json.loads((config.EVAL_DIR / args.queries).read_text())
@@ -142,6 +159,7 @@ def main():
 
     # generation faithfulness + refusal check ---------------------------------
     gen_rows = []
+    iso_rows = []
     refusal_results = []
     if not args.no_judge:
         gen_strategy = args.strategies[-1]  # judge on the richer/last strategy
@@ -185,10 +203,45 @@ def main():
             refusal_results.append((q["id"], ans.refused))
             print(f"  [refusal] {q['id']} refused={ans.refused}", flush=True)
 
-    write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_results)
+        # generation in isolation: feed the gold (label-relevant) chunks directly,
+        # bypassing retrieval, so a low score here points at the prompt/model and a
+        # high score here (with a low full-pipeline score) points at retrieval.
+        if args.isolate_generation:
+            iso_ckpt = _judge_ckpt_path(args.queries, gen_strategy).with_name(
+                f"judge_iso_{Path(args.queries).stem}_{gen_strategy}.jsonl"
+            )
+            if args.fresh_judge:
+                iso_ckpt.unlink(missing_ok=True)
+            iso_done = _load_judge_ckpt(iso_ckpt)
+            with iso_ckpt.open("a", encoding="utf-8") as fh:
+                for q in answerable:
+                    if q["id"] in iso_done:
+                        iso_rows.append(iso_done[q["id"]])
+                        continue
+                    gold = gold_chunks(store, q, TOP_K)
+                    if not gold:
+                        print(f"  [iso] {q['id']} no gold chunks; skipped", flush=True)
+                        continue
+                    ans = generate(q["question"], gold)
+                    src_text = "\n\n".join(
+                        f"[{i+1}] {c.text}" for i, c in enumerate(gold)
+                    )
+                    verdict = judge_answer(q["question"], ans.text, src_text)
+                    rec = {"id": q["id"], "n_gold": len(gold), **verdict}
+                    fh.write(json.dumps(rec) + "\n")
+                    fh.flush()
+                    iso_rows.append(rec)
+                    print(f"  [iso] {q['id']} faithful={verdict.get('faithfulness')} "
+                          f"relevant={verdict.get('relevance')}", flush=True)
+                    if args.pace:
+                        time.sleep(args.pace)
+
+    write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
+                 refusal_results)
 
 
-def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_results):
+def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
+                 refusal_results):
     lines = ["# Financial RAG — Evaluation Report", ""]
     lines += [f"_Query set: `{args.queries}` ({len(answerable)} answerable queries)._", ""]
 
@@ -215,13 +268,14 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_re
         "",
         f"Metrics @k={TOP_K} over {len(chunk_rows[args.strategies[0]])} answerable queries.",
         "",
-        "| Strategy | Hit@k | MRR | Precision@k |",
-        "|---|---|---|---|",
+        "| Strategy | Hit@k | MRR | NDCG@k | Precision@k |",
+        "|---|---|---|---|---|",
     ]
     for strategy in args.strategies:
         r = chunk_rows[strategy]
         lines.append(
-            f"| {strategy} | {avg(r,'hit'):.2f} | {avg(r,'mrr'):.3f} | {avg(r,'precision'):.3f} |"
+            f"| {strategy} | {avg(r,'hit'):.2f} | {avg(r,'mrr'):.3f} | "
+            f"{avg(r,'ndcg'):.3f} | {avg(r,'precision'):.3f} |"
         )
     lines.append("")
 
@@ -229,16 +283,18 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_re
     lines += [
         "## 2. Reranking impact (hybrid retrieval, with vs without reranker)",
         "",
-        "| Strategy | Variant | Hit@k | MRR | Precision@k |",
-        "|---|---|---|---|---|",
+        "| Strategy | Variant | Hit@k | MRR | NDCG@k | Precision@k |",
+        "|---|---|---|---|---|---|",
     ]
     for strategy in args.strategies:
         b, rr = chunk_rows[strategy], rerank_rows[strategy]
         lines.append(
-            f"| {strategy} | retrieval-only | {avg(b,'hit'):.2f} | {avg(b,'mrr'):.3f} | {avg(b,'precision'):.3f} |"
+            f"| {strategy} | retrieval-only | {avg(b,'hit'):.2f} | {avg(b,'mrr'):.3f} | "
+            f"{avg(b,'ndcg'):.3f} | {avg(b,'precision'):.3f} |"
         )
         lines.append(
-            f"| {strategy} | + rerank | {avg(rr,'hit'):.2f} | {avg(rr,'mrr'):.3f} | {avg(rr,'precision'):.3f} |"
+            f"| {strategy} | + rerank | {avg(rr,'hit'):.2f} | {avg(rr,'mrr'):.3f} | "
+            f"{avg(rr,'ndcg'):.3f} | {avg(rr,'precision'):.3f} |"
         )
     lines.append("")
 
@@ -250,8 +306,8 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_re
         lines += [
             "## Per-category retrieval (+rerank)",
             "",
-            "| Category | Strategy | n | Hit@k | MRR | Precision@k |",
-            "|---|---|---|---|---|---|",
+            "| Category | Strategy | n | Hit@k | MRR | NDCG@k | Precision@k |",
+            "|---|---|---|---|---|---|---|",
         ]
         for category in sorted(set(cats)):
             idx = [i for i, c in enumerate(cats) if c == category]
@@ -259,7 +315,7 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_re
                 rr = [rerank_rows[strategy][i] for i in idx]
                 lines.append(
                     f"| {category} | {strategy} | {len(rr)} | {avg(rr,'hit'):.2f} | "
-                    f"{avg(rr,'mrr'):.3f} | {avg(rr,'precision'):.3f} |"
+                    f"{avg(rr,'mrr'):.3f} | {avg(rr,'ndcg'):.3f} | {avg(rr,'precision'):.3f} |"
                 )
         lines.append("")
 
@@ -272,6 +328,21 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, refusal_re
             "",
             f"- Faithfulness: **{faith*100:.0f}%**",
             f"- Relevance: **{rele*100:.0f}%**",
+            "",
+        ]
+    if iso_rows:
+        iso_faith = sum(r.get("faithfulness", 0) for r in iso_rows) / len(iso_rows)
+        iso_rele = sum(r.get("relevance", 0) for r in iso_rows) / len(iso_rows)
+        lines += [
+            "## 3b. Generation in isolation (gold chunks fed directly)",
+            "",
+            f"Generator scored on the {len(iso_rows)} queries with label-relevant "
+            "chunks, bypassing retrieval. Compare with §3: if isolation scores high "
+            "but the full pipeline scores low, the bug is in retrieval; if both are "
+            "low, the bug is in the prompt/model.",
+            "",
+            f"- Faithfulness (gold chunks): **{iso_faith*100:.0f}%**",
+            f"- Relevance (gold chunks): **{iso_rele*100:.0f}%**",
             "",
         ]
     if refusal_results:

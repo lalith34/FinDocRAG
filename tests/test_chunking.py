@@ -1,4 +1,4 @@
-from src.chunking import chunk_document, fixed_chunks, n_tokens
+from src.chunking import chunk_document, detect_section, fixed_chunks, n_tokens
 
 
 def test_fixed_chunks_window_and_overlap():
@@ -34,3 +34,47 @@ def test_chunk_document_ids_and_metadata():
         assert c.strategy == "fixed"
         assert c.position == i
         assert c.token_count == n_tokens(c.text)
+
+
+def test_detect_section_named_and_fallback():
+    assert detect_section("Item 1A. Risk Factors\nWe face competition...") == (
+        "Item 1A — Risk Factors"
+    )
+    assert detect_section("ITEM 7. MANAGEMENT'S DISCUSSION") == (
+        "Item 7 — Management's Discussion and Analysis"
+    )
+    # An item number with no canonical name still yields a usable label.
+    assert detect_section("Item 16. Form 10-K Summary") == "Item 16"
+    # "item" mid-sentence is not a header (must be at a line start).
+    assert detect_section("Each line item 1a was reviewed.") is None
+    assert detect_section("Just some prose with no header.") is None
+
+
+def test_chunk_document_carries_section_forward():
+    # Header line, then enough prose to spill into a second chunk with no header
+    # of its own — it must inherit Risk Factors.
+    body = " ".join(f"word{i}" for i in range(400))
+    text = f"Item 1A. Risk Factors\n{body}"
+    chunks = chunk_document(
+        ticker="AAPL",
+        company="Apple Inc.",
+        source_url="https://example.com",
+        text=text,
+        strategy="fixed",
+    )
+    assert len(chunks) > 1
+    assert all(c.section == "Item 1A — Risk Factors" for c in chunks)
+
+
+def test_chunk_document_front_matter_before_first_item():
+    text = "Cover page and table of contents.\n" + " ".join(
+        f"word{i}" for i in range(400)
+    )
+    chunks = chunk_document(
+        ticker="AAPL",
+        company="Apple Inc.",
+        source_url="https://example.com",
+        text=text,
+        strategy="fixed",
+    )
+    assert chunks[0].section == "Front Matter"

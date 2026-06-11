@@ -95,6 +95,17 @@ re-embedded / re-upserted.
 Both strategies emit the same `Chunk` dataclass, so everything downstream is
 strategy-agnostic. `chunk_id = "<TICKER>-<strategy>-NNNN"`.
 
+Every chunk is also tagged with its **10-K section** (`Chunk.section`, e.g.
+"Item 1A — Risk Factors"). Sections are detected **once on the original document**
+by `_section_spans` (an `Item N.` header regex that excludes pipe-flattened
+table-of-contents rows via a `(?!\|)` lookahead), then each chunk is labelled by
+the boundary in force at its start offset — found with a forward-moving
+`text.find` on the chunk's opening text. Doing this on the source text (not the
+chunk text) is what makes it robust: the semantic chunker joins sentences with
+spaces, which would otherwise hide a mid-document `\nITEM 7.` header from any scan
+of the chunk itself. The section rides into Pinecone metadata, `chunks.json`, the
+`<source>` prompt element, and the CLI/UI source cards.
+
 - **fixed** — 800-token window, 120 overlap. Cheap, deterministic, can split
   mid-thought.
 - **semantic** — split sentences, embed them, break where adjacent-sentence
@@ -148,8 +159,17 @@ XBRL noise on multi-company queries).
   quote figures exactly, **10-Ks are annual** (never fabricate quarters), map
   numbers to fiscal-year columns only when the header says so, and **refuse**
   (exact `config.REFUSAL_TEXT`) only when no source addresses the subject.
-- Returns `Answer(text, sources, refused, usage)`; `usage` carries
-  prompt/completion tokens and `system_fingerprint` (reproducibility provenance).
+- **Context layout (lost-in-the-middle, deck S2 §9):** `_order_for_context`
+  reorders the relevance-ranked top-k into a bookend — strongest chunk first,
+  second-strongest last, weaker ones buried in the middle where long-context
+  models attend least (`[r1,r3,r5,r4,r2]`). Sources are wrapped in structured
+  `<source id="N" company=… ticker=… section=…>` elements inside `<context>`,
+  with the question in `<question>` (structured context > plain prose). The
+  reorder is **skipped for COMPARISON queries** (`reorder=False`), whose chunks
+  are grouped per company rather than globally ranked.
+- Returns `Answer(text, sources, refused, usage)`; each `Source` now carries its
+  `section`; `usage` carries prompt/completion tokens and `system_fingerprint`
+  (reproducibility provenance).
 
 ## 10. Ingestion — `src/ingest.py`
 
@@ -175,14 +195,15 @@ XBRL noise on multi-company queries).
   appended to `logs/queries.jsonl`; UI thumbs feedback to `logs/feedback.jsonl`.
 - **Eval labels** ([src/eval_utils.py](src/eval_utils.py)) — a chunk is
   "relevant" if it's from an expected ticker AND contains an expected keyword;
-  yields Hit@k, MRR, Precision@k. Shared by the harness and unit tests.
+  yields Hit@k, MRR, **NDCG@k**, Precision@k. NDCG rewards ranking relevant
+  chunks higher, not just retrieving them. Shared by the harness and unit tests.
 
 ## 12. Scripts & app
 
 | Entry point | Purpose |
 |---|---|
 | `python -m scripts.build_index` | ingest → chunk → embed → upsert (`--force`, `--refresh-raw`, `--no-ingest`, `--strategies`) |
-| `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`) |
+| `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`, `--isolate-generation`). `--isolate-generation` adds §3b: feeds the gold (label-relevant) chunks straight to the generator, bypassing retrieval, so a low score there points at the prompt and a high score there with a low §3 points at retrieval (deck S2 §12 two-stage diagnostic). |
 | `python -m scripts.ask "..."` | one-off CLI query (`--strategy`, `--no-rerank`, `--top-k`) |
 | `python -m scripts.smoke_test` | offline path check (no API key): ingest, both chunkers w/ fake embedder, BM25, RRF |
 | `streamlit run app.py` | chatbot: answer-model dropdown, rerank toggle, top-k slider |
@@ -208,9 +229,11 @@ Almost every "why" in this codebase traces to determinism:
 
 ## 15. Tests — `tests/`
 
-`pytest` covers chunking, determinism, eval labels, ingest cleaning, ingest
-reproducibility, router decisions, and RRF fusion. The expensive Pinecone/LLM
-paths are exercised by the online eval, not unit tests. CI: `.github/workflows/ci.yml`.
+`pytest` covers chunking (incl. **section detection + carry-forward**),
+determinism, eval labels (incl. **NDCG**), generation (**lost-in-the-middle
+ordering** in `test_generate.py`), ingest cleaning, ingest reproducibility, router
+decisions, and RRF fusion. The expensive Pinecone/LLM paths are exercised by the
+online eval, not unit tests. CI: `.github/workflows/ci.yml`.
 
 ## 16. Known minor cleanup items
 

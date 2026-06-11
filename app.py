@@ -71,8 +71,9 @@ if "messages" not in st.session_state:
 def render_sources(sources: list[dict]) -> None:
     with st.expander("Sources"):
         for s in sources:
+            section = f" · {s['section']}" if s.get("section") else ""
             st.markdown(
-                f"**[{s['n']}] {s['company']} ({s['ticker']})** — "
+                f"**[{s['n']}] {s['company']} ({s['ticker']})**{section} — "
                 f"[filing]({s['source_url']})  \n"
                 f"`{s['chunk_id']}`\n\n> {s['snippet']}"
             )
@@ -103,6 +104,7 @@ if prompt := st.chat_input("e.g. What were Apple's total net sales last year?"):
                 "n": s.n,
                 "ticker": s.ticker,
                 "company": s.company,
+                "section": s.section,
                 "source_url": s.source_url,
                 "chunk_id": s.chunk_id,
                 "snippet": (s.text[:400] + "…") if len(s.text) > 400 else s.text,

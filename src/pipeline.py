@@ -232,7 +232,9 @@ class RAGPipeline:
             else:
                 top = candidates[:top_k]
             t2 = time.perf_counter()
-        ans = generate(query, top, model=model)
+        # Comparison context is grouped per company, not globally relevance-ranked,
+        # so skip the lost-in-the-middle reorder that would interleave the groups.
+        ans = generate(query, top, model=model, reorder=r.kind != router.COMPARISON)
         t3 = time.perf_counter()
 
         trace = telemetry.QueryTrace(

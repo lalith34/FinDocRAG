@@ -4,7 +4,7 @@
 cd "$(dirname "$0")" || exit 1
 
 echo "============================================"
-echo "  Financial Document Intelligence — RAG"
+echo "  FinDocRAG — Financial Document Intelligence (RAG)"
 echo "============================================"
 
 # 1. Activate the project virtualenv created during setup.

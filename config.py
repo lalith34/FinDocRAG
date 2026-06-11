@@ -1,4 +1,4 @@
-"""Central configuration for the Financial Document Intelligence RAG pipeline."""
+"""Central configuration for FinDocRAG (Financial Document Intelligence RAG pipeline)."""
 from __future__ import annotations
 
 import json

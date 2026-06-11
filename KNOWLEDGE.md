@@ -1,4 +1,4 @@
-# Project Knowledge — Financial Document Intelligence (RAG)
+# Project Knowledge — FinDocRAG (Financial Document Intelligence, RAG)
 
 A developer's map of the codebase: what each piece does, how data flows, where
 the important decisions live, and the design constraints that explain *why* the

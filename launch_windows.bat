@@ -4,7 +4,7 @@ REM Starts the Streamlit chatbot after the one-time setup (venv + deps + .env).
 cd /d "%~dp0"
 
 echo ============================================
-echo   Financial Document Intelligence - RAG
+echo   FinDocRAG - Financial Document Intelligence (RAG)
 echo ============================================
 
 REM 1. Activate the project virtualenv created during setup.

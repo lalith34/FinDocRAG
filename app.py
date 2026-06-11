@@ -13,7 +13,7 @@ from src.pipeline import RAGPipeline
 from src.telemetry import log_feedback, setup_logging
 
 setup_logging()
-st.set_page_config(page_title="Financial Filings RAG", page_icon="📑", layout="wide")
+st.set_page_config(page_title="FinDocRAG", page_icon="📑", layout="wide")
 
 
 @st.cache_resource(show_spinner=False)
@@ -37,7 +37,7 @@ def _on_feedback(idx: int) -> None:
     )
 
 
-st.title("📑 Financial Document Intelligence")
+st.title("📑 FinDocRAG")
 st.caption(
     "Ask questions across the latest 10-K filings for "
     + ", ".join(config.COMPANIES) + ". Answers are grounded and cited."

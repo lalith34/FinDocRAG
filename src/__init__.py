@@ -1,1 +1,1 @@
-"""Financial Document Intelligence RAG pipeline."""
+"""FinDocRAG — Financial Document Intelligence RAG pipeline."""

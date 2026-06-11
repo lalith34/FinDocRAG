@@ -1,4 +1,4 @@
-# Financial Document Intelligence — RAG Pipeline
+# FinDocRAG — Financial Document Intelligence (RAG Pipeline)
 
 > My RAG app helps **investment analysts** answer **factual questions about
 > company financials & disclosures** from the **latest SEC 10-K filings of AAPL,

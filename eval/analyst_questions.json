@@ -1,0 +1,182 @@
+[
+  {
+    "id": "B1",
+    "category": "Basic",
+    "question": "What were Microsoft's total revenue, operating income, and net income for fiscal year 2025?",
+    "expected_tickers": ["MSFT"],
+    "must_contain": ["total revenue", "operating income", "net income"],
+    "reference": "For fiscal year 2025 Microsoft reported total revenue of $281.724B, operating income of $128.528B, and net income of $101.832B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "B2",
+    "category": "Basic",
+    "question": "What were Amazon's 2025 net sales by segment: North America, International, AWS, and consolidated total?",
+    "expected_tickers": ["AMZN"],
+    "must_contain": ["net sales", "segment"],
+    "reference": "Amazon's 2025 net sales: North America $426.305B, International $161.894B, AWS $128.725B, consolidated total $716.924B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "B3",
+    "category": "Basic",
+    "question": "What were Alphabet's 2025 revenues by segment?",
+    "expected_tickers": ["GOOGL"],
+    "must_contain": ["google services", "google cloud", "revenues"],
+    "reference": "Alphabet's 2025 revenues by segment: Google Services $342.721B, Google Cloud $58.705B, Other Bets $1.537B, hedging loss $0.127B, total revenues $402.836B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "B4",
+    "category": "Basic",
+    "question": "What were Apple's 2025 net sales by product category?",
+    "expected_tickers": ["AAPL"],
+    "must_contain": ["iphone", "net sales", "services"],
+    "reference": "Apple's 2025 net sales by category: iPhone $209.586B, Mac $33.708B, iPad $28.023B, Wearables, Home and Accessories $35.686B, Services $109.158B, total net sales $416.161B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "B5",
+    "category": "Basic",
+    "question": "What were NVIDIA's fiscal 2026 revenues by reportable segment?",
+    "expected_tickers": ["NVDA"],
+    "must_contain": ["graphics", "segment", "compute"],
+    "reference": "NVIDIA fiscal 2026 revenue by reportable segment: Compute & Networking $193.479B, Graphics $22.459B, total revenue $215.938B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "M1",
+    "category": "Medium",
+    "question": "Compare Microsoft Intelligent Cloud, Amazon AWS, and Google Cloud by revenue and operating income. Which had the highest revenue?",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL"],
+    "must_contain": ["intelligent cloud", "aws", "google cloud"],
+    "reference": "AWS had the highest revenue at $128.725B; Microsoft Intelligent Cloud $106.265B; Google Cloud $58.705B. Operating income: AWS $45.606B, Microsoft Intelligent Cloud $44.589B, Google Cloud $13.910B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "M2",
+    "category": "Medium",
+    "question": "Which Apple product category grew the fastest year over year in 2025, and which category declined?",
+    "expected_tickers": ["AAPL"],
+    "must_contain": ["services", "wearables"],
+    "reference": "Services grew fastest at 14%; Wearables, Home and Accessories declined 4%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "M3",
+    "category": "Medium",
+    "question": "How much did NVIDIA Data Center revenue increase from fiscal 2025 to fiscal 2026, and how does that compare with Gaming revenue growth?",
+    "expected_tickers": ["NVDA"],
+    "must_contain": ["data center", "gaming"],
+    "reference": "Data Center increased by $78.551B (from $115.186B to $193.737B). Gaming increased by $4.692B (from $11.350B to $16.042B).",
+    "expect_refusal": false
+  },
+  {
+    "id": "M4",
+    "category": "Medium",
+    "question": "Compare AWS and Google Cloud in 2025 by revenue and operating income. Which was larger, and by how much?",
+    "expected_tickers": ["AMZN", "GOOGL"],
+    "must_contain": ["aws", "google cloud"],
+    "reference": "AWS revenue exceeded Google Cloud revenue by $70.020B. AWS operating income exceeded Google Cloud operating income by $31.696B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "M5",
+    "category": "Medium",
+    "question": "Which Microsoft reportable segment had the highest operating margin in fiscal 2025? Calculate operating income divided by revenue for each segment.",
+    "expected_tickers": ["MSFT"],
+    "must_contain": ["operating income", "segment"],
+    "reference": "Productivity and Business Processes had the highest margin (~57.8%); Intelligent Cloud ~42.0%; More Personal Computing ~25.9%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H1",
+    "category": "High",
+    "question": "Rank MSFT, AMZN, GOOG, AAPL, and NVDA by total revenue in their latest annual filings.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["total revenue", "net sales", "revenues"],
+    "reference": "By total revenue: AMZN $716.924B, AAPL $416.161B, GOOG $402.836B, MSFT $281.724B, NVDA $215.938B.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H2",
+    "category": "High",
+    "question": "Rank the five companies by net income. Does the ranking match the revenue ranking?",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["net income"],
+    "reference": "Net income: GOOG $132.170B, NVDA $120.067B, AAPL $112.010B, MSFT $101.832B, AMZN $77.670B. The ranking does NOT match revenue ranking; Amazon has the highest revenue but the lowest net income of the five.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H3",
+    "category": "High",
+    "question": "Compare the companies' disclosed cloud or AI-infrastructure-related revenue buckets: Microsoft Cloud, AWS, Google Cloud, and NVIDIA Data Center. Rank them by 2025/2026 size and by year-over-year growth rate.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "NVDA"],
+    "must_contain": ["microsoft cloud", "aws", "google cloud", "data center"],
+    "reference": "By size: NVIDIA Data Center $193.737B, Microsoft Cloud $168.9B, AWS $128.725B, Google Cloud $58.705B. By growth: NVIDIA Data Center ~68.2%, Google Cloud ~35.8%, Microsoft Cloud ~22.7%, AWS ~19.7%. These buckets are not perfectly comparable because they are different disclosures.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H4",
+    "category": "High",
+    "question": "For each company, identify its largest disclosed revenue bucket and calculate what percentage of total revenue it represents.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["segment", "net sales", "revenues"],
+    "reference": "Largest bucket as a share of revenue: MSFT Productivity and Business Processes ~42.9%; AMZN North America ~59.5%; GOOG Google Services ~85.1%; AAPL iPhone ~50.4%; NVDA Data Center ~89.7%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H5",
+    "category": "High",
+    "question": "What reportable segment structure does each company use in the filing? Summarize the segment names for all five companies.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["segment"],
+    "reference": "MSFT: Productivity and Business Processes, Intelligent Cloud, More Personal Computing. AMZN: North America, International, AWS. GOOG: Google Services, Google Cloud, Other Bets. AAPL: Americas, Europe, Greater China, Japan, Rest of Asia Pacific (geographic). NVDA: Compute & Networking, Graphics.",
+    "expect_refusal": false
+  },
+  {
+    "id": "A1",
+    "category": "Advanced",
+    "question": "Calculate and rank operating margin for all five companies using operating income divided by total revenue.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["operating income", "total revenue", "net sales"],
+    "reference": "Operating margin: NVDA ~60.4%, MSFT ~45.6%, GOOG ~32.0%, AAPL ~32.0%, AMZN ~11.2%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "A2",
+    "category": "Advanced",
+    "question": "Calculate and rank net profit margin for all five companies using net income divided by total revenue.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["net income", "total revenue", "net sales"],
+    "reference": "Net profit margin: NVDA ~55.6%, MSFT ~36.1%, GOOG ~32.8%, AAPL ~26.9%, AMZN ~10.8%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "A3",
+    "category": "Advanced",
+    "question": "Which company had net income greater than operating income, and what filing items explain that result?",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["other income", "net income", "operating income"],
+    "reference": "Alphabet/GOOG: operating income was $129.039B while net income was $132.170B, explained by Other income including ~$29.787B of other income and a ~$24.080B gain on equity securities (before tax effects).",
+    "expect_refusal": false
+  },
+  {
+    "id": "A4",
+    "category": "Advanced",
+    "question": "Compare each company's major services, cloud, or AI-infrastructure-related growth bucket: MSFT Microsoft Cloud, AMZN AWS, GOOG Google Cloud, AAPL Services, and NVDA Data Center. Rank by year-over-year growth rate and note comparability limitations.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["microsoft cloud", "aws", "google cloud", "services", "data center"],
+    "reference": "YoY growth: NVDA Data Center ~68.2%, GOOG Google Cloud ~35.8%, MSFT Microsoft Cloud ~22.7%, AMZN AWS ~19.7%, AAPL Services ~13.5%. These are management-disclosed categories, not identical business lines.",
+    "expect_refusal": false
+  },
+  {
+    "id": "A5",
+    "category": "Advanced",
+    "question": "Using only the filings, write a comparative paragraph identifying each company's main 2025/2026 revenue or profit driver and one caveat or risk signal from the same filing.",
+    "expected_tickers": ["MSFT", "AMZN", "GOOGL", "AAPL", "NVDA"],
+    "must_contain": ["revenue", "risk"],
+    "reference": "Drivers/caveats: MSFT Microsoft Cloud and segment strength; AMZN North America scale plus AWS profitability; GOOG Google Services scale and Google Cloud growth, with Other Bets losses; AAPL iPhone scale and Services growth/high margin; NVDA Data Center/Blackwell-driven growth and customer concentration.",
+    "expect_refusal": false
+  }
+]

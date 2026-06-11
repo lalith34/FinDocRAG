@@ -28,12 +28,12 @@ from pathlib import Path
 
 import config
 from .chunking import Chunk
-from .reliability import make_openai_client, openai_retry
+from .reliability import anthropic_retry, make_anthropic_client
 
 TREE_DIR = config.DATA_DIR / "pageindex"
-TREE_STRATEGY = "fixed"          # chunk snapshot the leaves come from
-SUMMARY_MODEL = "gpt-4o-mini"    # cheap; only used once per leaf to build the tree
-NAV_MODEL = config.CHAT_MODEL    # the reasoning model that walks the tree
+TREE_STRATEGY = "fixed"             # chunk snapshot the leaves come from
+SUMMARY_MODEL = "claude-haiku-4-5"  # cheap; only used once per leaf to build the tree
+NAV_MODEL = config.CHAT_MODEL       # the reasoning model that walks the tree
 TOP_K = config.TOP_K
 
 _client = None
@@ -42,7 +42,7 @@ _client = None
 def _cli():
     global _client
     if _client is None:
-        _client = make_openai_client()
+        _client = make_anthropic_client()
     return _client
 
 
@@ -63,23 +63,23 @@ def load_chunks(ticker: str) -> list[Chunk]:
 
 
 # --- tree build --------------------------------------------------------------
-@openai_retry
+_SUMMARY_SYS = (
+    "Summarise this excerpt from a 10-K filing in ONE short line (max 20 words) "
+    "describing what facts/figures it contains, so a router can decide whether it "
+    "answers a question. No preamble."
+)
+
+
+@anthropic_retry
 def _summarise(text: str) -> str:
-    resp = _cli().chat.completions.create(
+    resp = _cli().messages.create(
         model=SUMMARY_MODEL,
-        temperature=0,
-        seed=config.GEN_SEED,
-        messages=[
-            {
-                "role": "system",
-                "content": "Summarise this excerpt from a 10-K filing in ONE short "
-                "line (max 20 words) describing what facts/figures it contains, so a "
-                "router can decide whether it answers a question. No preamble.",
-            },
-            {"role": "user", "content": text[:4000]},
-        ],
+        max_tokens=64,
+        system=_SUMMARY_SYS,
+        messages=[{"role": "user", "content": text[:4000]}],
     )
-    return resp.choices[0].message.content.strip().replace("\n", " ")
+    out = "".join(b.text for b in resp.content if b.type == "text")
+    return out.strip().replace("\n", " ")
 
 
 def build_tree(ticker: str, chunks: list[Chunk] | None = None, *, rebuild: bool = False,
@@ -137,19 +137,22 @@ _NAV_SYS = (
 )
 
 
-@openai_retry
+@anthropic_retry
 def _nav_call(question: str, rendered: str) -> dict:
-    resp = _cli().chat.completions.create(
+    resp = _cli().messages.create(
         model=NAV_MODEL,
-        temperature=0,
-        seed=config.GEN_SEED,
-        response_format={"type": "json_object"},
+        max_tokens=512,
+        system=_NAV_SYS + '\n\nRespond ONLY with a JSON object, no other text.',
         messages=[
-            {"role": "system", "content": _NAV_SYS},
             {"role": "user", "content": f"TREE:\n{rendered}\n\nQUESTION: {question}"},
         ],
     )
-    return json.loads(resp.choices[0].message.content)
+    text = "".join(b.text for b in resp.content if b.type == "text")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        return json.loads(text[start : end + 1])
 
 
 class PageIndexRetriever:

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import config
 from .chunking import Chunk
-from .reliability import make_openai_client, openai_retry
+from .reliability import anthropic_retry, make_anthropic_client
 
 _SYSTEM = f"""You are a financial analyst assistant. You answer questions ONLY \
 using the SOURCES provided, which are excerpts from companies' SEC 10-K (annual) \
@@ -93,7 +93,7 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        _client = make_openai_client()
+        _client = make_anthropic_client()
     return _client
 
 
@@ -123,13 +123,15 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
     ]
 
 
-@openai_retry
-def _chat(messages: list[dict], model: str):
-    return _get_client().chat.completions.create(
+@anthropic_retry
+def _chat(system: str, user: str, model: str):
+    # Opus 4.8 takes the system prompt as a top-level arg (not a message role) and
+    # rejects temperature/seed, so determinism now rests on the fixed prompt + model.
+    return _get_client().messages.create(
         model=model,
-        temperature=0,
-        seed=config.GEN_SEED,
-        messages=messages,
+        max_tokens=config.GEN_MAX_TOKENS,
+        system=system,
+        messages=[{"role": "user", "content": user}],
     )
 
 
@@ -159,21 +161,15 @@ def generate(
         "Answer with citations:"
     )
 
-    resp = _chat(
-        [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": user},
-        ],
-        model,
-    )
-    text = resp.choices[0].message.content.strip()
+    resp = _chat(_SYSTEM, user, model)
+    text = "".join(b.text for b in resp.content if b.type == "text").strip()
     refused = config.REFUSAL_TEXT.lower() in text.lower()
     usage = {
-        "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0),
-        "completion_tokens": getattr(resp.usage, "completion_tokens", 0),
-        # The backend build that served this completion. With temperature=0 and a
-        # fixed seed, output is reproducible only while this fingerprint is stable;
-        # a change here is OpenAI's signal that determinism may have shifted.
-        "system_fingerprint": getattr(resp, "system_fingerprint", None),
+        # Map Anthropic's input/output token counts onto the same keys telemetry
+        # and cost estimation already expect.
+        "prompt_tokens": getattr(resp.usage, "input_tokens", 0),
+        "completion_tokens": getattr(resp.usage, "output_tokens", 0),
+        # Anthropic has no system_fingerprint; record the resolved model id instead.
+        "system_fingerprint": getattr(resp, "model", None),
     }
     return Answer(text=text, sources=sources, refused=refused, usage=usage)

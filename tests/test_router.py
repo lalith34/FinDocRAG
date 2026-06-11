@@ -77,6 +77,19 @@ def test_single_company_is_not_comparison():
     assert route("what were Apple's total net sales").kind != COMPARISON
 
 
+@pytest.mark.parametrize(
+    "q,expected",
+    [
+        # "GOOG" (not just GOOGL/Alphabet/Google) must resolve to the corpus
+        # ticker, else a 5-ticker ranking silently drops Alphabet.
+        ("Rank MSFT, AMZN, GOOG, AAPL, and NVDA by revenue", "GOOGL"),
+        ("GOOG cloud revenue", "GOOGL"),
+    ],
+)
+def test_goog_alias_resolves_to_googl(q, expected):
+    assert expected in router.mentioned_tickers(q)
+
+
 # --- Single-company scoping --------------------------------------------------
 @pytest.mark.parametrize(
     "q,tk",

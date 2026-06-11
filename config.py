@@ -39,40 +39,44 @@ SEC_USER_AGENT = os.getenv(
 )
 FILING_FORM = "10-K"
 
-# --- OpenAI models -----------------------------------------------------------
+# --- Embeddings (OpenAI) -----------------------------------------------------
+# Embeddings stay on OpenAI: Anthropic has no embeddings endpoint, and retrieval
+# is independent of the generation provider. text-embedding-3-small is a single
+# stable model (OpenAI does not rotate dated snapshots for it), so the name itself
+# pins the version. The on-disk embed cache keys on (model, text), so once warm,
+# embeddings are fully reproducible.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# text-embedding-3-small is a single stable model (OpenAI does not rotate dated
-# snapshots for it), so the name itself pins the version. The on-disk embed cache
-# keys on (model, text), so once warm, embeddings are fully reproducible.
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")  # 1536-dim
 EMBED_DIM = 1536
-# Generation uses the stronger model: gpt-4o-mini spuriously refuses when the
-# retrieved context mixes the answer with related-but-partial chunks (e.g. a
-# cross-company comparison padded with segment-level tables). gpt-4o is robust to
-# that noise.
-#
-# Pin a DATED snapshot, not the floating "gpt-4o" alias: the alias silently rolls
-# to a new underlying model every few months, which changes answers for the same
-# query/context. A dated snapshot is the only way to keep generation reproducible
-# over time.
-CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-2024-08-06")
+
+# --- Generation + judge (Anthropic) ------------------------------------------
+# Generation and the LLM judge run on Claude. Generation uses the most capable
+# model; the judge runs on a SEPARATE, lighter Claude model so it (a) draws from a
+# different per-model rate-limit bucket instead of competing with generation, and
+# (b) is a different model from the one it grades (cleaner eval methodology).
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+CHAT_MODEL = os.getenv("ANTHROPIC_CHAT_MODEL", "claude-opus-4-8")
+JUDGE_MODEL = os.getenv("ANTHROPIC_JUDGE_MODEL", "claude-sonnet-4-6")
+# Cap on generated answer length. Comparison answers (5 companies) are the longest
+# real case and fit well under this; staying <16K keeps non-streaming calls under
+# the SDK's HTTP-timeout guard.
+GEN_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "2048"))
 # Models the UI lets the user pick for answering. The first is the default and
 # must match CHAT_MODEL so the dropdown and the headless default agree.
 CHAT_MODELS = [
-    "gpt-4o-2024-08-06",
-    "gpt-4o-mini",
-    "gpt-4o",
+    "claude-opus-4-8",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
 ]
-# Best-effort determinism knob for chat completions. Combined with temperature=0
-# and a pinned snapshot, the same (seed, model, prompt) returns the same output
-# as long as system_fingerprint (logged per query) is unchanged.
-GEN_SEED = int(os.getenv("OPENAI_GEN_SEED", "7"))
+# Note: Opus 4.8 removes temperature/top_p/seed (they 400), so generation is no
+# longer pinned by a sampling seed the way the OpenAI path was; reproducibility
+# now rests on the fixed prompt + model id alone.
 
 # $/1M tokens (input, output) for query-cost estimation in telemetry.
 MODEL_PRICES = {
-    "gpt-4o-2024-08-06": (2.50, 10.00),
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4o-mini": (0.15, 0.60),
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
     "text-embedding-3-small": (0.02, 0.0),
 }
 

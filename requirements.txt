@@ -1,4 +1,7 @@
 # Core
+# Anthropic powers generation + the LLM judge; OpenAI is kept for embeddings only
+# (Anthropic has no embeddings endpoint).
+anthropic==0.109.1
 openai==2.41.0
 python-dotenv==1.2.2
 numpy==2.4.6

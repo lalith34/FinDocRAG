@@ -109,7 +109,7 @@ _NAME_ALIASES: dict[str, tuple[str, ...]] = {
     "AAPL": ("apple",),
     "NVDA": ("nvidia",),
     "MSFT": ("microsoft",),
-    "GOOGL": ("alphabet", "google"),
+    "GOOGL": ("alphabet", "google", "goog"),
     "AMZN": ("amazon",),
 }
 

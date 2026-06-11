@@ -180,15 +180,21 @@ class RAGPipeline:
         monopolise the slots, which is why cross-company comparisons used to
         drop companies and refuse.
 
-        Uses dense retrieval per company and deliberately skips the
-        cross-encoder: on a multi-company query ("AAPL NVDA MSFT ... sales")
+        Uses hybrid (dense + BM25) retrieval per company and deliberately skips
+        the cross-encoder: on a multi-company query ("AAPL NVDA MSFT ... sales")
         the reranker scores every chunk as irrelevant and buries each company's
-        income-statement table below XBRL-tag noise. Dense similarity, filtered
-        per ticker, puts that table at/near rank 1 for each company."""
+        income-statement table below XBRL-tag noise. The BM25 arm is what lifts
+        each company's income statement to rank ~1 even when its line-item label
+        differs from the query wording (Apple reports "Total net sales", Alphabet
+        "Total revenues" against a "total revenue" question); dense-only
+        similarity missed those rows and was silently dropping AAPL and GOOG from
+        5-ticker rankings."""
         qvec = embeddings.embed_query(query)
         out: list[Chunk] = []
         for tk in tickers:
-            out.extend(c for c, _ in self.store.dense(qvec, per_company, ticker=tk))
+            out.extend(
+                c for c, _ in self.store.hybrid(query, qvec, per_company, ticker=tk)
+            )
         return out
 
     def answer(
@@ -237,7 +243,11 @@ class RAGPipeline:
             # instead of a flat top-k that one company can monopolise. The
             # cross-encoder is skipped here (see retrieve_per_ticker), so the
             # rerank toggle does not apply.
-            per_company = max(3, -(-top_k // len(r.tickers)))  # ceil(top_k / n), min 3
+            # Floor of 5 per company: each filing's income-statement table can
+            # sit as low as rank ~4 behind residual XBRL/front-matter noise (worst
+            # case observed: AMZN total net sales at rank 4), so a smaller quota
+            # silently dropped companies from 4-5 ticker rankings.
+            per_company = max(5, -(-top_k // len(r.tickers)))  # ceil(top_k / n), min 5
             top = self.retrieve_per_ticker(query, list(r.tickers), per_company=per_company)
             reranked = False
             t1 = t2 = time.perf_counter()

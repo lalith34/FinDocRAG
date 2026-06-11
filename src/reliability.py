@@ -1,6 +1,7 @@
 """Shared retry/backoff decorators (tenacity) for every external call site:
-SEC EDGAR (requests), OpenAI, and Pinecone. OpenAI clients are constructed with
-max_retries=0 so tenacity owns the retry policy and we don't double-backoff.
+SEC EDGAR (requests), OpenAI (embeddings), Anthropic (generation + judge), and
+Pinecone. SDK clients are constructed with max_retries=0 so tenacity owns the
+retry policy and we don't double-backoff.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ log = logging.getLogger("reliability")
 
 HTTP_TIMEOUT = 30
 OPENAI_TIMEOUT = 60
+ANTHROPIC_TIMEOUT = 120
 
 
 def _openai_errors():
@@ -30,6 +32,24 @@ def _openai_errors():
     )
 
     return (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
+
+
+def _anthropic_errors():
+    from anthropic import (
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+        OverloadedError,
+        RateLimitError,
+    )
+
+    return (
+        RateLimitError,
+        APITimeoutError,
+        APIConnectionError,
+        InternalServerError,
+        OverloadedError,
+    )
 
 
 def _pinecone_errors():
@@ -61,6 +81,20 @@ def openai_retry(fn):
     )(fn)
 
 
+def anthropic_retry(fn):
+    # Same budget as the OpenAI path: 8 attempts (~3 min) so a sustained
+    # token-per-minute rate-limit burst is ridden out instead of crashing a long
+    # eval/generation run. Generation (Opus) and the judge (Sonnet) run on
+    # separate per-model rate-limit buckets, so they no longer compete.
+    return retry(
+        retry=retry_if_exception_type(_anthropic_errors()),
+        wait=wait_exponential(multiplier=1, max=60),
+        stop=stop_after_attempt(8),
+        reraise=True,
+        before_sleep=before_sleep_log(log, logging.WARNING),
+    )(fn)
+
+
 def pinecone_retry(fn):
     return retry(
         retry=retry_if_exception_type(_pinecone_errors()),
@@ -81,3 +115,18 @@ def make_openai_client():
     from openai import OpenAI
 
     return OpenAI(api_key=config.OPENAI_API_KEY, timeout=OPENAI_TIMEOUT, max_retries=0)
+
+
+def make_anthropic_client():
+    import config
+
+    if not config.ANTHROPIC_API_KEY:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is not set. Add it to your .env "
+            "(see .env.example) — generation and the LLM judge run on Claude."
+        )
+    from anthropic import Anthropic
+
+    return Anthropic(
+        api_key=config.ANTHROPIC_API_KEY, timeout=ANTHROPIC_TIMEOUT, max_retries=0
+    )

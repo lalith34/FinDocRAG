@@ -32,14 +32,14 @@ import config  # noqa: E402
 from src import embeddings, pageindex  # noqa: E402
 from src.eval_utils import rank_metrics  # noqa: E402
 from src.generate import generate  # noqa: E402
-from src.reliability import make_openai_client, openai_retry  # noqa: E402
+from src.reliability import anthropic_retry, make_anthropic_client  # noqa: E402
 from src.rerank import rerank  # noqa: E402
 from src.vectorstore import PineconeStore  # noqa: E402
 
 TICKER = "MSFT"
 TOP_K = config.TOP_K
-JUDGE_MODEL = config.CHAT_MODEL     # custom faithfulness/relevance judge (gpt-4o)
-RAGAS_MODEL = "gpt-4o-mini"         # RAGAS judge; cheaper so the framework pass stays tractable
+JUDGE_MODEL = config.JUDGE_MODEL    # custom faithfulness/relevance judge (Claude)
+RAGAS_MODEL = config.JUDGE_MODEL    # RAGAS judge (Claude)
 BENCH_CKPT = config.LOGS_DIR / "pageindex_bench.jsonl"
 
 # Reference answers verified against data/processed/MSFT.txt (FY2025 10-K), used
@@ -63,7 +63,7 @@ _client = None
 def _cli():
     global _client
     if _client is None:
-        _client = make_openai_client()
+        _client = make_anthropic_client()
     return _client
 
 
@@ -76,18 +76,36 @@ _JUDGE_SYS = (
 )
 
 
-@openai_retry
+_JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "faithfulness": {"type": "integer", "enum": [0, 1]},
+        "relevance": {"type": "integer", "enum": [0, 1]},
+    },
+    "required": ["faithfulness", "relevance"],
+    "additionalProperties": False,
+}
+
+
+@anthropic_retry
 def judge(question: str, answer: str, sources: str) -> dict:
-    resp = _cli().chat.completions.create(
+    resp = _cli().messages.create(
         model=JUDGE_MODEL,
-        temperature=0,
-        response_format={"type": "json_object"},
+        max_tokens=256,
+        system=_JUDGE_SYS,
         messages=[
-            {"role": "system", "content": _JUDGE_SYS},
             {"role": "user", "content": f"QUESTION:\n{question}\n\nSOURCES:\n{sources}\n\nANSWER:\n{answer}"},
         ],
+        output_config={"format": {"type": "json_schema", "schema": _JUDGE_SCHEMA}},
     )
-    return json.loads(resp.choices[0].message.content)
+    text = "".join(b.text for b in resp.content if b.type == "text")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        return {"faithfulness": 0, "relevance": 0, "_parse_error": True}
 
 
 def _must_ok(answer: str, q: dict) -> bool:
@@ -182,7 +200,8 @@ def benchmark(questions, store, retr, *, fresh=False, pace=0.0) -> list[dict]:
 # --- RAGAS pass over the cached rows (both arms) ------------------------------
 def score_ragas(rows: list[dict]) -> dict:
     import ragas
-    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    from langchain_anthropic import ChatAnthropic
+    from langchain_openai import OpenAIEmbeddings
     from ragas import EvaluationDataset
     from ragas import evaluate as ragas_evaluate
     from ragas.embeddings import LangchainEmbeddingsWrapper
@@ -197,7 +216,9 @@ def score_ragas(rows: list[dict]) -> dict:
     from ragas.run_config import RunConfig
 
     llm = LangchainLLMWrapper(
-        ChatOpenAI(model=RAGAS_MODEL, temperature=0, api_key=config.OPENAI_API_KEY)
+        ChatAnthropic(
+            model=RAGAS_MODEL, api_key=config.ANTHROPIC_API_KEY, max_tokens=1024, timeout=120
+        )
     )
     emb = LangchainEmbeddingsWrapper(
         OpenAIEmbeddings(model=config.EMBED_MODEL, api_key=config.OPENAI_API_KEY)

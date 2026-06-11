@@ -2,13 +2,13 @@
 
 These pin the reproducibility properties of the pipeline that are cheap to test
 without network/model access: deterministic tie-breaking in fusion and reranking,
-and the config knobs (pinned model snapshot + fixed generation seed) that keep
-generation reproducible over time. The one stage we cannot make bit-deterministic
-in a unit test is the OpenAI generation call itself; those guarantees are
-documented and audited via the logged `system_fingerprint`.
+and the config invariants for the generation/judge models. Generation runs on
+Claude (Opus 4.8), which removed the `seed`/`temperature` sampling knobs the old
+OpenAI path leaned on — so reproducibility now rests on the fixed prompt + model
+id, and these tests guard that the now-rejected sampling params are not sent.
 """
+import inspect
 import random
-import re
 
 import config
 from src.chunking import Chunk
@@ -70,14 +70,29 @@ def test_rerank_ties_break_by_chunk_id(monkeypatch):
     assert [c.chunk_id for c, _ in out] == ["c0", "c1", "c2"]
 
 
-# --- Config knobs that keep generation reproducible over time ----------------
-def test_chat_model_is_a_pinned_dated_snapshot():
-    # A floating alias (e.g. "gpt-4o") silently rolls to a new model; require a
-    # dated snapshot so the same query keeps returning the same answer.
-    assert re.search(r"-\d{4}-\d{2}-\d{2}$", config.CHAT_MODEL), (
-        f"CHAT_MODEL={config.CHAT_MODEL!r} is not a dated snapshot"
-    )
+# --- Config invariants for the generation/judge models -----------------------
+def test_chat_model_matches_default_and_is_known():
+    # The headless default (CHAT_MODEL) must equal the UI dropdown default
+    # (CHAT_MODELS[0]) so both paths answer with the same model, and it must be a
+    # model we actually offer.
+    assert config.CHAT_MODEL == config.CHAT_MODELS[0]
+    assert config.CHAT_MODEL in set(config.CHAT_MODELS)
 
 
-def test_generation_seed_is_set():
-    assert isinstance(config.GEN_SEED, int)
+def test_judge_model_differs_from_generation_model():
+    # The judge runs on a different Claude than generation: a separate per-model
+    # rate-limit bucket (no contention) and a judge that isn't grading itself.
+    assert config.JUDGE_MODEL != config.CHAT_MODEL
+
+
+def test_generation_sends_no_rejected_sampling_params():
+    # Opus 4.8 returns 400 if temperature/top_p/top_k/seed are sent; guard against
+    # any of them creeping back into the generation call.
+    from src import generate
+
+    # Strip comments so the explanatory note ("rejects temperature/seed") doesn't
+    # trip the check; we only care about actual keyword arguments (`param=`).
+    src = inspect.getsource(generate._chat)
+    code = "\n".join(line.split("#", 1)[0] for line in src.splitlines())
+    for banned in ("temperature=", "top_p=", "top_k=", "seed="):
+        assert banned not in code, f"generate._chat must not send {banned} (400 on Opus 4.8)"

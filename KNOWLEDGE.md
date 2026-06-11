@@ -10,11 +10,15 @@ code looks the way it does. Pairs with [README.md](README.md) (user-facing) and
 ## 1. What this is
 
 A Retrieval-Augmented Generation pipeline that answers factual questions about
-company financials from the **latest SEC 10-K filings** of five mega-caps (AAPL,
-NVDA, MSFT, GOOGL, AMZN), with **cited, grounded answers** and an explicit
-**refusal path** when the filings don't support an answer. Delivered as a CLI and
-a Streamlit chatbot, plus an evaluation harness that produces the two required
-deliverables: a **chunking-strategy comparison** and a **reranking-impact
+company financials from the **latest SEC 10-K filings**, with **cited, grounded
+answers** and an explicit **refusal path** when the filings don't support an
+answer. It **ships with** five mega-caps (AAPL, NVDA, MSFT, GOOGL, AMZN) but the
+corpus is **registry-backed**: any US-listed 10-K filer can be added or removed at
+runtime — no code edits (§10b). A deterministic **guardrails** layer (§9b) screens
+input and validates output around the pipeline. Generation is **multi-provider**
+(Anthropic or OpenAI, chosen per query); embeddings stay on OpenAI. Delivered as a
+CLI and a Streamlit chatbot, plus an evaluation harness that produces the two
+required deliverables: a **chunking-strategy comparison** and a **reranking-impact
 analysis**.
 
 ---
@@ -30,14 +34,16 @@ EDGAR 10-K HTML ──ingest──► clean text ──chunk──► chunks ─
                                                        (BM25 + eval source of truth)
 
                     QUERY (pipeline.RAGPipeline.answer)
-question ──router──► retrieve (hybrid: Pinecone dense + BM25 sparse, RRF) ──►
-          rerank (ONNX cross-encoder) ──► generate (gpt-4o, cited) ──► Answer
-                                                                       + QueryTrace
+question ─[input guard]─► router ─► retrieve (hybrid: Pinecone dense + BM25, RRF) ─►
+          rerank (ONNX cross-encoder) ─► generate (Anthropic|OpenAI, cited) ─►
+          [output guard: citation audit + disclaimer] ─► Answer + QueryTrace
 ```
 
 Build is **incremental**: ingest skips a ticker whose latest EDGAR accession
 already matches what's processed, and only changed tickers are re-chunked /
-re-embedded / re-upserted.
+re-embedded / re-upserted. The corpus itself is editable at runtime — adding a
+ticker validates it against SEC, then ingests/chunks/embeds/upserts **only** that
+company (§10b).
 
 ---
 
@@ -52,8 +58,10 @@ re-embedded / re-upserted.
 | How is **retrieval** done? | hybrid dense + BM25, fused with RRF, weights set by router | `PineconeStore.hybrid` + [src/router.py](src/router.py) |
 | Is there a **vectorless** retriever? | PageIndex: LLM navigates a tree of the filing's 10-K Items (single-company only) | [src/pageindex.py](src/pageindex.py), `answer(retriever="pageindex")` |
 | Where is **reranking**? | local ONNX cross-encoder (fastembed, no torch) | [src/rerank.py](src/rerank.py) |
-| Where is the **answer generated**? | gpt-4o (seeded), cite-everything prompt, refusal path | [src/generate.py](src/generate.py) |
-| Where is the **model chosen**? | `config.CHAT_MODELS`; UI dropdown → `answer(model=…)` → `generate` | [config.py](config.py), [app.py](app.py) |
+| Where is the **answer generated**? | Anthropic **or** OpenAI (default `claude-opus-4-8`), cite-everything prompt, refusal path | [src/generate.py](src/generate.py) |
+| Where is the **model chosen**? | `available_chat_models()` (filtered by which keys are set); UI dropdown → `answer(model=…)` → `generate` | [config.py](config.py), [app.py](app.py) |
+| Where are the **guardrails**? | input (injection/advice/length) + output (citation audit, disclaimer), rule-based | [src/guardrails.py](src/guardrails.py), wired in `RAGPipeline.answer` |
+| How is a **company added/removed**? | registry-backed corpus; validate vs SEC → ingest/index only that ticker | [src/corpus.py](src/corpus.py), [config.py](config.py) registry |
 
 ---
 
@@ -138,6 +146,12 @@ and sparse) so near-identical chunks from other filings can't crowd out the
 answer. The lexical/semantic decision needs a margin of ≥2 to flip off the robust
 hybrid default.
 
+Company detection (`mentioned_tickers`) and the company-token guard
+(`_company_tokens`) read **live from the registry** (`config.COMPANIES` /
+`config.COMPANY_ALIASES`), so a ticker added at runtime (§10b) is matched by symbol
+*and* name with no code change — and a new 4-letter ticker like `TSLA` isn't
+miscounted as a lexical acronym.
+
 > **Note — `Route.reason`** is populated but only consumed by router tests; it is
 > not logged into `QueryTrace`. Debug-only.
 
@@ -159,12 +173,13 @@ productionised. Selectable per query: `RAGPipeline.answer(retriever="pageindex")
 and the UI's **Retriever** radio.
 
 - **Tree** = the filing's 10-K Items (branches) × their chunks (leaves), each leaf
-  summarised to one line by `gpt-4o-mini` **once** and cached to
-  `data/pageindex/<TICKER>_tree.json`. Built lazily per ticker on first use and
+  summarised to one line by a cheap model (`claude-haiku-4-5`) **once** and cached
+  to `data/pageindex/<TICKER>_tree.json`. Built lazily per ticker on first use and
   memoised for the process. Leaves come from the `fixed` snapshot, read locally
   (no Pinecone needed for navigation).
-- **Navigate** = one `gpt-4o` call reads the whole tree (Item labels + leaf
-  summaries, not full text) and returns `{section, reasoning, node_ids}`. The
+- **Navigate** = one reasoning-model call (`NAV_MODEL = config.CHAT_MODEL`, default
+  `claude-opus-4-8`) reads the whole tree (Item labels + leaf summaries, not full
+  text) and returns `{section, reasoning, node_ids}`. The
   retriever validates the ids against the tree (drops hallucinated ones) and caps
   at top-k. Output carries an **auditable path** (`Item 1A — Risk Factors →
   MSFT-fixed-0019…`), surfaced on `RAGResult.nav_path` and in the UI.
@@ -173,16 +188,26 @@ and the UI's **Retriever** radio.
   back to the vector arm, and `RAGResult.retriever` reports which arm actually ran.
 - **Trade-off** (see `eval/pageindex_msft_report.md`): competitive faithfulness,
   higher MRR, fewer/more-precise leaves, and a traceable path — at the cost of a
-  full LLM call's latency per query vs an ANN lookup. "Deterministic" only under
-  `temperature=0` + seed, same caveat as generation.
+  full LLM call's latency per query vs an ANN lookup. Reproducibility rests on the
+  fixed prompt + pinned model id (the default Opus arm rejects temperature/seed —
+  same caveat as generation, §9).
 - Benchmark: `python -m scripts.pageindex_eval` (30 MSFT questions, both arms,
   custom judge + RAGAS with filing-verified references).
 
 ## 9. Generate — `src/generate.py`
 
-- Model: `gpt-4o-2024-08-06` by default (dated snapshot + `temperature=0` +
-  `seed=7` for reproducibility). The UI can pick a different model via
-  `config.CHAT_MODELS`; `generate(query, chunks, model=…)` threads it through.
+- **Multi-provider.** `generate(query, chunks, model=…)` resolves the provider
+  with `config.model_provider(model)` and dispatches to `_chat_anthropic` or
+  `_chat_openai`, both returning a normalized `(text, usage)` so the rest of the
+  pipeline is provider-blind. Default `config.CHAT_MODEL = claude-opus-4-8`.
+  - **OpenAI arm** pins `temperature=0` + `seed=0` (reasoning o-series models omit
+    temperature and use `max_completion_tokens`).
+  - **Anthropic arm** takes the system prompt as a top-level arg; Opus 4.8/4.7
+    **reject** `temperature`/`seed` (they 400), so reproducibility there rests on
+    the fixed prompt + pinned model id, not a sampling seed. Token counts are
+    mapped onto the same `prompt_tokens`/`completion_tokens` keys telemetry expects.
+  - Clients are built lazily per provider, so a missing key only errors when that
+    provider is actually used — the other arm still works.
 - The system prompt is the heart of grounding: cite every claim with `[n]`,
   quote figures exactly, **10-Ks are annual** (never fabricate quarters), map
   numbers to fiscal-year columns only when the header says so, and **refuse**
@@ -199,6 +224,38 @@ and the UI's **Retriever** radio.
   `section`; `usage` carries prompt/completion tokens and `system_fingerprint`
   (reproducibility provenance).
 
+## 9b. Guardrails — `src/guardrails.py`
+
+A deterministic, rule-based safety layer wrapped around `RAGPipeline.answer` — pure
+functions of the text, for the same reasons the router is (no extra LLM call → no
+added latency/cost, reproducible, unit-testable). A first line of defence, *not* a
+replacement for the grounded-generation + refusal prompt in §9.
+
+- **Input guard** (`check_input` → `InputGuard`), runs **before** routing and
+  retrieval, so a blocked query costs nothing:
+  - **length cap** (`MAX_QUERY_CHARS = 2000`) — prompt-stuffing / cost abuse.
+  - **prompt injection / extraction** — instruction-override ("ignore previous
+    instructions"), system-prompt-leak ("reveal your prompt"), and context-tag
+    breakout (`</context>`, `<system>…`) regexes. Tight set, anchored on
+    override/extraction verbs to avoid flagging ordinary finance questions.
+  - **investment-advice solicitation** — "should I buy/sell", "price target",
+    "will the stock go up", "recommend a stock" → **deflected** (not refused)
+    toward the disclosures, because a 10-K assistant must not make buy/sell calls
+    or predictions.
+  - When blocked, the pipeline returns the guard's safe completion with
+    `route="guardrail/<reason>"` (`reason ∈ {length, injection, advice}`) and logs
+    a `QueryTrace` — no router, no retrieval, no model call.
+- **Output guard** (`audit_citations` → `CitationAudit`), runs **after**
+  generation: parses `[n]` markers and flags **dangling** citations (an `[n]` with
+  no matching source — an invented reference) and **ungrounded** substantive
+  answers (non-refusal, sources were available, cites nothing). `dangling` rides
+  into `QueryTrace.dangling_citations` and `RAGResult.dangling_citations`.
+- **Disclaimer** (`with_disclaimer`) — appends a standing "from the cited filings /
+  verify against source / not investment advice" footer once to grounded answers
+  (skipped for refusals).
+- **Surfaced** in telemetry (`QueryTrace.guardrail`, `dangling_citations`) and the
+  UI (a 🛡️ badge naming the guard that fired; a ⚠️ warning on dangling citations).
+
 ## 10. Ingestion — `src/ingest.py`
 
 - EDGAR submissions API → latest 10-K primary doc HTML.
@@ -211,6 +268,33 @@ and the UI's **Retriever** radio.
   durations, taxonomy URLs) using *unambiguous* single-token shapes so real
   tables and prose survive.
 - Incremental: skip when the cached accession matches the latest EDGAR accession.
+- `resolve_company(ticker)` → `(cik, official_name)` from SEC's company-tickers
+  table; `resolve_ciks` resolves a batch. These power runtime validation (§10b).
+
+## 10b. Corpus management (runtime add/remove) — `src/corpus.py`
+
+The corpus is **data, not code**. Companies live in a JSON registry
+(`data/companies.json`, gitignored under `data/`), seeded from the five mega-caps
+in `config._SEED_COMPANIES`. `config.COMPANIES` (ticker → name) and
+`config.COMPANY_ALIASES` (ticker → name aliases) are rebuilt from it by
+`config.reload_registry()`, which mutates them **in place** so a long-running
+process (the Streamlit app) picks up a change after `load_pipeline.clear()` — no
+restart.
+
+- **`add_company(ticker)`** — validate against SEC EDGAR (`resolve_company` +
+  `latest_filing`; rejects unknown symbols and foreign filers with no 10-K via a
+  friendly `CorpusResult.message`, **never raises**) → register with an
+  auto-derived name alias (`config.derive_aliases`, strips corporate suffixes:
+  "Tesla, Inc." → `tesla`) → `build_indexes(tickers=[t])` rebuilds **only** that
+  ticker (the scoped, incremental path), leaving the rest untouched. Idempotent and
+  self-healing; rolls back the registry entry if indexing fails for a brand-new
+  ticker.
+- **`remove_company(ticker)`** — deletes the company's vectors from every Pinecone
+  namespace, prunes the local BM25 snapshots, drops its processed/raw/PageIndex-tree
+  files, and unregisters it. No ghost data left behind.
+- Entry points: `python -m scripts.add_company TSLA META`,
+  `python -m scripts.remove_company …`, and the Streamlit sidebar **➕ Manage
+  corpus** panel (live add/remove for a demo).
 
 ## 11. Cross-cutting
 
@@ -219,8 +303,10 @@ and the UI's **Retriever** radio.
   30K-TPM rate-limit burst during eval), and Pinecone (5). OpenAI clients use
   `max_retries=0` so tenacity owns the policy.
 - **Telemetry** ([src/telemetry.py](src/telemetry.py)) — JSON logging; per-query
-  `QueryTrace` (route, timings, tokens, est. cost, model, system_fingerprint)
-  appended to `logs/queries.jsonl`; UI thumbs feedback to `logs/feedback.jsonl`.
+  `QueryTrace` (route, timings, tokens, est. cost, model, system_fingerprint,
+  **`guardrail`** = input guard that fired, **`dangling_citations`** = invented
+  source refs) appended to `logs/queries.jsonl`; UI thumbs feedback to
+  `logs/feedback.jsonl`.
 - **Eval labels** ([src/eval_utils.py](src/eval_utils.py)) — a chunk is
   "relevant" if it's from an expected ticker AND contains an expected keyword;
   yields Hit@k, MRR, **NDCG@k**, Precision@k. NDCG rewards ranking relevant
@@ -241,6 +327,8 @@ and the UI's **Retriever** radio.
 | Entry point | Purpose |
 |---|---|
 | `python -m scripts.build_index` | ingest → chunk → embed → upsert (`--force`, `--refresh-raw`, `--no-ingest`, `--strategies`) |
+| `python -m scripts.add_company TSLA [META …]` | validate vs SEC → ingest/index **only** the new ticker(s) (`--rebuild`); registry-backed (§10b) |
+| `python -m scripts.remove_company TSLA [...]` | delete a company's vectors + snapshots + files + registry entry (§10b) |
 | `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`, `--isolate-generation`, `--ragas`). `--isolate-generation` adds §3b: feeds the gold (label-relevant) chunks straight to the generator, bypassing retrieval, so a low score there points at the prompt and a high score there with a low §3 points at retrieval (deck S2 §12 two-stage diagnostic). `--ragas` adds §5: the RAGAS framework's own LLM-judge scores (faithfulness, answer relevancy, context precision/recall) run *alongside* the custom judge — see §11. |
 | `python -m scripts.ask "..."` | one-off CLI query (`--strategy`, `--no-rerank`, `--top-k`) |
 | `python -m scripts.smoke_test` | offline path check (no API key): ingest, both chunkers w/ fake embedder, BM25, RRF |
@@ -248,17 +336,28 @@ and the UI's **Retriever** radio.
 
 ## 13. Config knobs — `config.py`
 
-Corpus (`COMPANIES`), models (`EMBED_MODEL`, `CHAT_MODEL`, `CHAT_MODELS`,
-`GEN_SEED`, `MODEL_PRICES`), Pinecone (`PINECONE_INDEX_NAME`, cloud/region),
-reranker (`RERANK_ONNX_MODEL`), chunking (`FIXED_*`, `SEMANTIC_*`), retrieval
-(`TOP_K=5`, `RETRIEVE_K=20`, `RRF_K=60`), and `REFUSAL_TEXT`. Secrets via `.env`
-(`OPENAI_API_KEY`, `PINECONE_API_KEY`).
+Corpus — **registry-backed**: `_SEED_COMPANIES` seeds `data/companies.json`
+(`COMPANIES_FILE`); `COMPANIES`, `COMPANY_ALIASES`, `derive_aliases`,
+`load_registry`/`save_registry`/`reload_registry` (§10b). Models —
+`EMBED_MODEL=text-embedding-3-small`, generation `CHAT_MODEL=claude-opus-4-8`
+(judge `JUDGE_MODEL=claude-sonnet-4-6`), the per-provider dropdown lists
+`ANTHROPIC_CHAT_MODELS` / `OPENAI_CHAT_MODELS` filtered by
+`available_chat_models()`, with `model_provider()` routing each id; `GEN_MAX_TOKENS`,
+`MODEL_PRICES`. Pinecone (`PINECONE_INDEX_NAME`, cloud/region), reranker
+(`RERANK_ONNX_MODEL`), chunking (`FIXED_*`, `SEMANTIC_*`), retrieval (`TOP_K=5`,
+`RETRIEVE_K=20`, `RRF_K=60`), and `REFUSAL_TEXT`. (Guardrail knob
+`MAX_QUERY_CHARS` lives in [src/guardrails.py](src/guardrails.py).) Secrets via
+`.env`: `OPENAI_API_KEY` (embeddings + optional OpenAI generation),
+`ANTHROPIC_API_KEY` (default generation + judge), `PINECONE_API_KEY`. The
+generation arm runs on whichever provider key is set.
 
 ## 14. Reproducibility design (the through-line)
 
 Almost every "why" in this codebase traces to determinism:
-- Pinned embed + chat model snapshots; `temperature=0`, `seed`, logged
-  `system_fingerprint`.
+- Pinned embed + chat model ids; the OpenAI generation arm pins `temperature=0` +
+  `seed`, while the default Anthropic (Opus) arm rejects sampling params, so its
+  reproducibility rests on the fixed prompt + pinned model id; logged
+  `system_fingerprint` (OpenAI) / resolved model id (Anthropic) as provenance.
 - Stable tie-breaking (by `chunk_id`) in dense, sparse, RRF, and rerank — because
   Pinecone/BM25/cross-encoder don't guarantee order for equal scores.
 - Rule-based router instead of an LLM classifier.
@@ -270,8 +369,12 @@ Almost every "why" in this codebase traces to determinism:
 `pytest` covers chunking (incl. **section detection + carry-forward**),
 determinism, eval labels (incl. **NDCG**), generation (**lost-in-the-middle
 ordering** in `test_generate.py`), ingest cleaning, ingest reproducibility, router
-decisions, and RRF fusion. The expensive Pinecone/LLM paths are exercised by the
-online eval, not unit tests. CI: `.github/workflows/ci.yml`.
+decisions, RRF fusion, **guardrails** (`test_guardrails.py`: injection/advice/length
+blocks + citation audit + disclaimer), and the **corpus registry**
+(`test_corpus_registry.py`: alias derivation, registry round-trip, corrupt-file
+fallback, runtime-added ticker is router-visible). 136 tests; the expensive
+Pinecone/LLM paths are exercised by the online eval, not unit tests. CI:
+`.github/workflows/ci.yml`.
 
 ## 16. Known minor cleanup items
 

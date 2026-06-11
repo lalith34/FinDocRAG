@@ -12,7 +12,12 @@ from dataclasses import dataclass
 
 import config
 from .chunking import Chunk
-from .reliability import anthropic_retry, make_anthropic_client
+from .reliability import (
+    anthropic_retry,
+    make_anthropic_client,
+    make_openai_client,
+    openai_retry,
+)
 
 _SYSTEM = f"""You are a financial analyst assistant. You answer questions ONLY \
 using the SOURCES provided, which are excerpts from companies' SEC 10-K (annual) \
@@ -87,14 +92,17 @@ class Answer:
             self.usage = {}
 
 
-_client = None
+# One cached client per provider, built lazily so a missing key only errors when
+# that provider is actually used (the other arm still works).
+_clients: dict[str, object] = {}
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        _client = make_anthropic_client()
-    return _client
+def _get_client(provider: str):
+    if provider not in _clients:
+        _clients[provider] = (
+            make_anthropic_client() if provider == "anthropic" else make_openai_client()
+        )
+    return _clients[provider]
 
 
 def _order_for_context(chunks: list[Chunk]) -> list[Chunk]:
@@ -123,16 +131,63 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
     ]
 
 
+# Both arms return a normalized (text, usage) tuple so generate() is provider-blind.
+def _chat(system: str, user: str, model: str) -> tuple[str, dict]:
+    provider = config.model_provider(model)
+    if provider == "anthropic":
+        return _chat_anthropic(system, user, model)
+    return _chat_openai(system, user, model)
+
+
 @anthropic_retry
-def _chat(system: str, user: str, model: str):
-    # Opus 4.8 takes the system prompt as a top-level arg (not a message role) and
-    # rejects temperature/seed, so determinism now rests on the fixed prompt + model.
-    return _get_client().messages.create(
+def _chat_anthropic(system: str, user: str, model: str) -> tuple[str, dict]:
+    # Claude takes the system prompt as a top-level arg (not a message role) and
+    # Opus 4.8/4.7 reject temperature/seed, so determinism rests on prompt + model.
+    resp = _get_client("anthropic").messages.create(
         model=model,
         max_tokens=config.GEN_MAX_TOKENS,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+    usage = {
+        # Map Anthropic's input/output token counts onto the same keys telemetry
+        # and cost estimation already expect.
+        "prompt_tokens": getattr(resp.usage, "input_tokens", 0),
+        "completion_tokens": getattr(resp.usage, "output_tokens", 0),
+        # Anthropic has no system_fingerprint; record the resolved model id instead.
+        "system_fingerprint": getattr(resp, "model", None),
+    }
+    return text, usage
+
+
+@openai_retry
+def _chat_openai(system: str, user: str, model: str) -> tuple[str, dict]:
+    # OpenAI takes the system prompt as a message role. Pin temperature=0 for
+    # stable answers; the o-series reasoning models reject temperature, so omit it
+    # there. Reasoning models also use max_completion_tokens instead of max_tokens.
+    is_reasoning = model.startswith(("o1", "o3", "o4"))
+    kwargs: dict = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    if is_reasoning:
+        kwargs["max_completion_tokens"] = config.GEN_MAX_TOKENS
+    else:
+        kwargs["max_tokens"] = config.GEN_MAX_TOKENS
+        kwargs["temperature"] = 0
+        kwargs["seed"] = 0  # best-effort determinism on the OpenAI arm
+    resp = _get_client("openai").chat.completions.create(**kwargs)
+    text = (resp.choices[0].message.content or "").strip()
+    usage = {
+        "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0),
+        "completion_tokens": getattr(resp.usage, "completion_tokens", 0),
+        "system_fingerprint": getattr(resp, "system_fingerprint", None),
+    }
+    return text, usage
 
 
 def generate(
@@ -161,15 +216,6 @@ def generate(
         "Answer with citations:"
     )
 
-    resp = _chat(_SYSTEM, user, model)
-    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+    text, usage = _chat(_SYSTEM, user, model)
     refused = config.REFUSAL_TEXT.lower() in text.lower()
-    usage = {
-        # Map Anthropic's input/output token counts onto the same keys telemetry
-        # and cost estimation already expect.
-        "prompt_tokens": getattr(resp.usage, "input_tokens", 0),
-        "completion_tokens": getattr(resp.usage, "output_tokens", 0),
-        # Anthropic has no system_fingerprint; record the resolved model id instead.
-        "system_fingerprint": getattr(resp, "model", None),
-    }
     return Answer(text=text, sources=sources, refused=refused, usage=usage)

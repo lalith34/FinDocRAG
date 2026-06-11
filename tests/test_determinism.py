@@ -10,6 +10,8 @@ id, and these tests guard that the now-rejected sampling params are not sent.
 import inspect
 import random
 
+import pytest
+
 import config
 from src.chunking import Chunk
 from src.vectorstore import rrf_fuse
@@ -71,12 +73,27 @@ def test_rerank_ties_break_by_chunk_id(monkeypatch):
 
 
 # --- Config invariants for the generation/judge models -----------------------
-def test_chat_model_matches_default_and_is_known():
-    # The headless default (CHAT_MODEL) must equal the UI dropdown default
-    # (CHAT_MODELS[0]) so both paths answer with the same model, and it must be a
-    # model we actually offer.
-    assert config.CHAT_MODEL == config.CHAT_MODELS[0]
-    assert config.CHAT_MODEL in set(config.CHAT_MODELS)
+def test_chat_model_is_offered_and_routes_to_a_provider():
+    # The headless default (CHAT_MODEL) must be a model we actually offer, and it
+    # must resolve to a known provider so generation can dispatch.
+    assert config.CHAT_MODEL in set(config.ANTHROPIC_CHAT_MODELS + config.OPENAI_CHAT_MODELS)
+    assert config.model_provider(config.CHAT_MODEL) in ("anthropic", "openai")
+
+
+def test_available_chat_models_puts_default_first_when_present():
+    # When the default's provider key is set, available_chat_models() must lead
+    # with CHAT_MODEL so the dropdown default and the headless default agree.
+    models = config.available_chat_models()
+    if config.CHAT_MODEL in models:
+        assert models[0] == config.CHAT_MODEL
+
+
+def test_model_provider_routes_by_name_and_rejects_unknown():
+    assert config.model_provider("claude-opus-4-8") == "anthropic"
+    assert config.model_provider("gpt-4o") == "openai"
+    assert config.model_provider("o3-mini") == "openai"
+    with pytest.raises(ValueError):
+        config.model_provider("mystery-model-9")
 
 
 def test_judge_model_differs_from_generation_model():
@@ -87,12 +104,15 @@ def test_judge_model_differs_from_generation_model():
 
 def test_generation_sends_no_rejected_sampling_params():
     # Opus 4.8 returns 400 if temperature/top_p/top_k/seed are sent; guard against
-    # any of them creeping back into the generation call.
+    # any of them creeping back into the *Anthropic* generation call. (The OpenAI
+    # arm pins temperature/seed on purpose, so it is intentionally not checked.)
     from src import generate
 
     # Strip comments so the explanatory note ("rejects temperature/seed") doesn't
     # trip the check; we only care about actual keyword arguments (`param=`).
-    src = inspect.getsource(generate._chat)
+    src = inspect.getsource(generate._chat_anthropic)
     code = "\n".join(line.split("#", 1)[0] for line in src.splitlines())
     for banned in ("temperature=", "top_p=", "top_k=", "seed="):
-        assert banned not in code, f"generate._chat must not send {banned} (400 on Opus 4.8)"
+        assert banned not in code, (
+            f"_chat_anthropic must not send {banned} (400 on Opus 4.8)"
+        )

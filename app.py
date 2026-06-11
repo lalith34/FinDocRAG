@@ -52,7 +52,20 @@ with st.sidebar:
     # Chunking strategy is an internal retrieval detail, not a user-facing knob:
     # prefer semantic (best in the eval), else whatever index is built.
     strategy = "semantic" if "semantic" in available else available[-1]
-    model = st.selectbox("Answer model", config.CHAT_MODELS, index=0)
+    # Offer every chat model whose provider key is set (OpenAI and/or Anthropic).
+    chat_models = config.available_chat_models()
+    if not chat_models:
+        st.error(
+            "No generation model available. Set ANTHROPIC_API_KEY and/or "
+            "OPENAI_API_KEY in .env to enable answering."
+        )
+        st.stop()
+    model = st.selectbox(
+        "Answer model",
+        chat_models,
+        index=0,
+        format_func=lambda m: f"{m}  ·  {config.model_provider(m).title()}",
+    )
     retriever = st.radio(
         "Retriever",
         ["vector", "pageindex"],
@@ -72,10 +85,13 @@ with st.sidebar:
     st.markdown("**Corpus**")
     for t, name in config.COMPANIES.items():
         st.markdown(f"- `{t}` — {name}")
+    # OpenAI powers embeddings (retrieval) regardless of the generation provider.
     if not config.OPENAI_API_KEY:
-        st.warning("OPENAI_API_KEY not set — generation will fail. Add it to .env.")
+        st.warning("OPENAI_API_KEY not set — embeddings/retrieval will fail. Add it to .env.")
     if not config.PINECONE_API_KEY:
         st.warning("PINECONE_API_KEY not set — retrieval will fail. Add it to .env.")
+    if not config.ANTHROPIC_API_KEY and not config.OPENAI_API_KEY:
+        st.warning("No generation key set — add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []

@@ -45,6 +45,9 @@ python -m scripts.build_index
 # 2. Produce the deliverable: chunking comparison + reranking impact report
 python -m scripts.evaluate            # add --no-judge to skip LLM grading
 #   -> writes eval/REPORT.md
+#   --isolate-generation  adds a retrieval-vs-generation diagnostic (report §3b)
+#   --ragas               adds RAGAS framework scores (report §5);
+#                         first: pip install -r requirements-eval.txt
 
 # 3a. Ask from the CLI
 python -m scripts.ask "What were Apple's total net sales last year?"
@@ -70,8 +73,9 @@ scripts/
   evaluate.py         # the comparison & impact report
   ask.py              # one-off CLI query
 eval/
-  queries.json        # labelled test queries (incl. an unanswerable one)
+  queries.json        # labelled test queries (refusal + reference fields)
   REPORT.md           # generated
+requirements-eval.txt # optional RAGAS deps (kept out of the lean core install)
 app.py                # Streamlit chatbot
 ```
 

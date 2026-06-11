@@ -1,0 +1,14 @@
+# Optional dependencies for the RAGAS framework eval pass
+# (`python -m scripts.evaluate --ragas`). Kept separate from requirements.txt so
+# the core app and CI stay lean and don't pull the heavy LangChain stack.
+#
+# Install:  pip install -r requirements-eval.txt
+#
+# Pin notes: RAGAS 0.2.x must pair with the LangChain 0.3 line. The 1.x stack
+# removed `langchain_community.chat_models.vertexai`, which RAGAS imports at load
+# time, so langchain-core/-community are capped below 0.4.
+ragas==0.2.15
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-openai==0.3.35

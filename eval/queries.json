@@ -25,6 +25,7 @@
     "question": "What operating segments does Amazon report?",
     "expected_tickers": ["AMZN"],
     "must_contain": ["segment"],
+    "reference": "Amazon reports three operating segments: North America, International, and Amazon Web Services (AWS).",
     "expect_refusal": false
   },
   {
@@ -32,6 +33,7 @@
     "question": "What does Alphabet disclose about advertising revenue?",
     "expected_tickers": ["GOOGL"],
     "must_contain": ["advertising"],
+    "reference": "Alphabet earns the majority of its revenue from advertising, including Google Search and other properties, YouTube ads, and the Google Network.",
     "expect_refusal": false
   },
   {
@@ -39,6 +41,7 @@
     "question": "What does NVIDIA report about its Data Center business?",
     "expected_tickers": ["NVDA"],
     "must_contain": ["data center"],
+    "reference": "NVIDIA's Data Center segment provides accelerated computing platforms and GPUs used for artificial intelligence, data analytics, and high-performance computing by cloud and enterprise customers.",
     "expect_refusal": false
   },
   {
@@ -46,6 +49,7 @@
     "question": "How does Microsoft describe its Azure cloud platform?",
     "expected_tickers": ["MSFT"],
     "must_contain": ["azure"],
+    "reference": "Microsoft describes Azure as its cloud computing platform offering compute, storage, networking, database, analytics, and AI services for building, deploying, and managing applications.",
     "expect_refusal": false
   },
   {
@@ -193,6 +197,7 @@
     "question": "What regulatory and antitrust risks does Alphabet face?",
     "expected_tickers": ["GOOGL"],
     "must_contain": ["regulat", "antitrust"],
+    "reference": "Alphabet faces ongoing antitrust and competition investigations and litigation, along with evolving privacy, data protection, and other regulations across jurisdictions that could result in fines or required changes to its products and business practices.",
     "expect_refusal": false
   },
   {

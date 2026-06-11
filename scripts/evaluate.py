@@ -51,6 +51,106 @@ def gold_chunks(store: PineconeStore, query: dict, k: int) -> list:
     return rel[:k]
 
 
+# --- RAGAS framework eval (deck S2 §12) --------------------------------------
+# Runs *alongside* the hand-rolled judge, not instead of it. The pipeline pass
+# (hybrid -> rerank -> generate) is cached to a JSONL so re-scoring with RAGAS
+# never re-spends those tokens; RAGAS then scores faithfulness, answer relevancy,
+# and context precision/recall with its own LLM-as-judge.
+def _ragas_ckpt_path(queries_name: str, strategy: str) -> Path:
+    stem = Path(queries_name).stem
+    return config.LOGS_DIR / f"ragas_inputs_{stem}_{strategy}.jsonl"
+
+
+def build_ragas_rows(store, answerable, ckpt: Path, *, fresh=False, pace=0.0) -> list[dict]:
+    if fresh:
+        ckpt.unlink(missing_ok=True)
+    done = _load_judge_ckpt(ckpt)  # same id-keyed JSONL resume loader
+    rows = []
+    with ckpt.open("a", encoding="utf-8") as fh:
+        for q in answerable:
+            if q["id"] in done:
+                rows.append(done[q["id"]])
+                continue
+            qvec = embeddings.embed_query(q["question"])
+            pool = [c for c, _ in store.hybrid(q["question"], qvec, config.RETRIEVE_K)]
+            top = [c for c, _ in rerank(q["question"], pool, TOP_K)]
+            ans = generate(q["question"], top)
+            row = {
+                "id": q["id"],
+                "user_input": q["question"],
+                "response": ans.text,
+                "retrieved_contexts": [c.text for c in top],
+            }
+            if q.get("reference"):
+                row["reference"] = q["reference"]
+            fh.write(json.dumps(row) + "\n")
+            fh.flush()
+            rows.append(row)
+            print(f"  [ragas-gen] {q['id']} done", flush=True)
+            if pace:
+                time.sleep(pace)
+    return rows
+
+
+def score_ragas(rows: list[dict]) -> dict:
+    """Score cached rows with RAGAS. Reference-free metrics (faithfulness, answer
+    relevancy, reference-free context precision) run over every row; the
+    reference-based metrics (context recall, reference context precision) run only
+    over the subset of rows that carry a `reference`."""
+    import ragas
+    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    from ragas import EvaluationDataset
+    from ragas import evaluate as ragas_evaluate
+    from ragas.embeddings import LangchainEmbeddingsWrapper
+    from ragas.llms import LangchainLLMWrapper
+    from ragas.metrics import (
+        Faithfulness,
+        LLMContextPrecisionWithoutReference,
+        LLMContextPrecisionWithReference,
+        LLMContextRecall,
+        ResponseRelevancy,
+    )
+    from ragas.run_config import RunConfig
+
+    llm = LangchainLLMWrapper(
+        ChatOpenAI(model=config.CHAT_MODEL, temperature=0, api_key=config.OPENAI_API_KEY)
+    )
+    emb = LangchainEmbeddingsWrapper(
+        OpenAIEmbeddings(model=config.EMBED_MODEL, api_key=config.OPENAI_API_KEY)
+    )
+    # Low concurrency + generous retries to ride out the 30K-TPM ceiling.
+    rc = RunConfig(max_workers=4, timeout=180, max_retries=10, max_wait=60)
+
+    def _means(result, metrics) -> dict:
+        df = result.to_pandas()
+        return {m.name: float(df[m.name].dropna().mean()) for m in metrics}
+
+    scores = {"_version": ragas.__version__, "n": len(rows)}
+    free = [Faithfulness(), ResponseRelevancy(), LLMContextPrecisionWithoutReference()]
+    ds = EvaluationDataset.from_list(
+        [
+            {k: r[k] for k in ("user_input", "response", "retrieved_contexts")}
+            for r in rows
+        ]
+    )
+    scores.update(_means(ragas_evaluate(ds, metrics=free, llm=llm, embeddings=emb, run_config=rc), free))
+
+    ref_rows = [r for r in rows if r.get("reference")]
+    if ref_rows:
+        ref_metrics = [LLMContextPrecisionWithReference(), LLMContextRecall()]
+        ds_ref = EvaluationDataset.from_list(
+            [
+                {k: r[k] for k in ("user_input", "response", "retrieved_contexts", "reference")}
+                for r in ref_rows
+            ]
+        )
+        scores["n_ref"] = len(ref_rows)
+        scores.update(
+            _means(ragas_evaluate(ds_ref, metrics=ref_metrics, llm=llm, embeddings=emb, run_config=rc), ref_metrics)
+        )
+    return scores
+
+
 # --- LLM judge ---------------------------------------------------------------
 _JUDGE_SYS = (
     "You are evaluating a RAG answer. You are given a QUESTION, the SOURCES the "
@@ -133,6 +233,13 @@ def main():
         action="store_true",
         help="also judge generation on the gold (label-relevant) chunks, skipping "
         "retrieval, to separate retrieval failures from generation failures.",
+    )
+    ap.add_argument(
+        "--ragas",
+        action="store_true",
+        help="also score generation with the RAGAS framework (faithfulness, answer "
+        "relevancy, context precision/recall) alongside the custom judge. Requires "
+        "`pip install -r requirements-eval.txt`.",
     )
     args = ap.parse_args()
 
@@ -236,12 +343,28 @@ def main():
                     if args.pace:
                         time.sleep(args.pace)
 
+    # RAGAS framework eval (independent of the custom judge; runs even with
+    # --no-judge). Own resumable cache for the pipeline pass.
+    ragas_scores = {}
+    if args.ragas:
+        gen_strategy = args.strategies[-1]
+        rstore = PineconeStore(gen_strategy)
+        rows = build_ragas_rows(
+            rstore,
+            answerable,
+            _ragas_ckpt_path(args.queries, gen_strategy),
+            fresh=args.fresh_judge,
+            pace=args.pace,
+        )
+        print("  [ragas] scoring with RAGAS ...", flush=True)
+        ragas_scores = score_ragas(rows)
+
     write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
-                 refusal_results)
+                 refusal_results, ragas_scores)
 
 
 def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
-                 refusal_results):
+                 refusal_results, ragas_scores=None):
     lines = ["# Financial RAG — Evaluation Report", ""]
     lines += [f"_Query set: `{args.queries}` ({len(answerable)} answerable queries)._", ""]
 
@@ -353,6 +476,38 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
             f"- Unanswerable queries correctly refused: **{ok}/{len(refusal_results)}**",
             "",
         ]
+
+    if ragas_scores:
+        def _pct(key):
+            v = ragas_scores.get(key)
+            return f"{v*100:.0f}%" if isinstance(v, (int, float)) else "—"
+
+        lines += [
+            "## 5. RAGAS metrics (framework eval)",
+            "",
+            f"Scored over {ragas_scores.get('n', 0)} answerable queries with RAGAS "
+            f"`{ragas_scores.get('_version', '?')}` (judge: {config.CHAT_MODEL}), "
+            "run alongside the custom judge in §3.",
+            "",
+            "| Metric | Score | Needs reference? |",
+            "|---|---|---|",
+            f"| Faithfulness | {_pct('faithfulness')} | no |",
+            f"| Answer relevancy | {_pct('answer_relevancy')} | no |",
+            f"| Context precision | {_pct('llm_context_precision_without_reference')} | no |",
+        ]
+        if "n_ref" in ragas_scores:
+            n_ref = ragas_scores["n_ref"]
+            lines += [
+                f"| Context precision (vs reference) | {_pct('llm_context_precision_with_reference')} | yes (n={n_ref}) |",
+                f"| Context recall (vs reference) | {_pct('context_recall')} | yes (n={n_ref}) |",
+            ]
+        else:
+            lines += [
+                "",
+                "_Context recall and reference-based precision need a `reference` field "
+                "on queries; none present, so those metrics were skipped._",
+            ]
+        lines.append("")
 
     # Curated default keeps its historical name; any other query set writes a
     # sibling report so it never clobbers REPORT.md.

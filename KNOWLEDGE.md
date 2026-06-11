@@ -197,13 +197,23 @@ XBRL noise on multi-company queries).
   "relevant" if it's from an expected ticker AND contains an expected keyword;
   yields Hit@k, MRR, **NDCG@k**, Precision@k. NDCG rewards ranking relevant
   chunks higher, not just retrieving them. Shared by the harness and unit tests.
+- **RAGAS framework eval** (opt-in, `scripts.evaluate --ragas`, report §5) — a
+  second, independent generation-quality opinion that runs *alongside* the custom
+  judge, not instead of it. Reference-free metrics (faithfulness, answer
+  relevancy, context precision) score every answerable query; reference-based
+  metrics (context recall, reference context precision) score only the queries
+  that carry a `reference` field in `queries.json` (5 qualitative ones are
+  seeded). The pipeline pass (retrieve→rerank→generate) is cached to
+  `logs/ragas_inputs_*.jsonl` so re-scoring is free; RunConfig caps concurrency to
+  ride the 30K-TPM limit. Deps live in `requirements-eval.txt` (RAGAS 0.2.x + the
+  LangChain 0.3 line), kept out of the lean core `requirements.txt`.
 
 ## 12. Scripts & app
 
 | Entry point | Purpose |
 |---|---|
 | `python -m scripts.build_index` | ingest → chunk → embed → upsert (`--force`, `--refresh-raw`, `--no-ingest`, `--strategies`) |
-| `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`, `--isolate-generation`). `--isolate-generation` adds §3b: feeds the gold (label-relevant) chunks straight to the generator, bypassing retrieval, so a low score there points at the prompt and a high score there with a low §3 points at retrieval (deck S2 §12 two-stage diagnostic). |
+| `python -m scripts.evaluate` | the two deliverables + LLM-judge + refusal check → `eval/REPORT.md` (`--queries`, `--no-judge`, `--pace`, `--fresh-judge`, `--isolate-generation`, `--ragas`). `--isolate-generation` adds §3b: feeds the gold (label-relevant) chunks straight to the generator, bypassing retrieval, so a low score there points at the prompt and a high score there with a low §3 points at retrieval (deck S2 §12 two-stage diagnostic). `--ragas` adds §5: the RAGAS framework's own LLM-judge scores (faithfulness, answer relevancy, context precision/recall) run *alongside* the custom judge — see §11. |
 | `python -m scripts.ask "..."` | one-off CLI query (`--strategy`, `--no-rerank`, `--top-k`) |
 | `python -m scripts.smoke_test` | offline path check (no API key): ingest, both chunkers w/ fake embedder, BM25, RRF |
 | `streamlit run app.py` | chatbot: answer-model dropdown, rerank toggle, top-k slider |

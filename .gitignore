@@ -8,3 +8,6 @@ data/
 logs/
 .DS_Store
 *.log
+
+# Local demo notes (personal, not part of the repo)
+DEMO_SCRIPT.md

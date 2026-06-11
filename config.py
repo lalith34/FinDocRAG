@@ -115,7 +115,9 @@ def reload_registry() -> dict[str, dict]:
 reload_registry()
 
 # --- SEC / EDGAR -------------------------------------------------------------
-# SEC requires a descriptive User-Agent with contact info.
+# SEC requires a descriptive User-Agent with contact info. Set SEC_USER_AGENT in
+# your .env to your real name + email so EDGAR can reach you about your traffic;
+# the default below is a non-personal placeholder.
 SEC_USER_AGENT = os.getenv(
     "SEC_USER_AGENT", "GenAcademy Research your-email@example.com"
 )

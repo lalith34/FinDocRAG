@@ -101,6 +101,43 @@ def is_corpus_query(query: str) -> bool:
     return any(s in q for s in _CORPUS_SUBJECTS) and any(m in q for m in _CORPUS_META_CUES)
 
 
+# --- Corpus-wide content questions -------------------------------------------
+# "compare cloud spending across all the tickers in the corpus" names no company
+# but spans every one. It must NOT be read as a corpus meta-question just because
+# it says "corpus"/"tickers": it asks for data *from* the filings, so it has to
+# fan out to a per-company COMPARISON, not skip retrieval. The trap this avoids:
+# the word "corpus" alone matched is_corpus_query and returned the canned "here's
+# what I have indexed" listing instead of an actual cross-company answer.
+_ALL_CORPUS_RE = re.compile(
+    r"\b(all|each|every|across)\b.{0,30}\b(compan(?:y|ies)|tickers?|filings?|"
+    r"firms?|corpus|them)\b|\b(?:all|each)\s+(?:five|5)\b|"
+    r"\b(?:whole|entire)\s+corpus\b",
+    re.IGNORECASE,
+)
+# Content/analytical intent that distinguishes a corpus-wide *question* ("compare
+# revenue across all companies") from a bare *listing* ("list all the companies
+# in the corpus"). Only the former should expand to a full-corpus comparison.
+_AGGREGATE_INTENT = (
+    "compare", "comparison", "versus", " vs", "rank", "highest", "lowest",
+    "biggest", "largest", "smallest", "most", "least", "greatest", "average",
+    "difference", "differ", "spend", "spending", "breakdown", "trend",
+    "which company", "which has", "who has", "how much", "how many",
+)
+
+
+def _is_all_corpus_content(query: str, lower: str) -> bool:
+    """True when the query spans the whole corpus *and* asks something analytical
+    about it — i.e. a cross-company content question, not a corpus meta-listing."""
+    if not _ALL_CORPUS_RE.search(query):
+        return False
+    return (
+        any(cue in lower for cue in _AGGREGATE_INTENT)
+        or any(term in lower for term in _LINE_ITEM_TERMS)
+        or any(cue in lower for cue in _SEMANTIC_CUES)
+        or bool(_NUMBER_RE.search(query))
+    )
+
+
 # --- Company detection -------------------------------------------------------
 # Name aliases beyond the ticker itself, so "compare Apple and Google sales" is
 # recognised as a multi-company query the same way "AAPL GOOGL" is. 10-K bodies
@@ -203,6 +240,12 @@ def route(query: str) -> Route:
         return Route(SMALLTALK, 0.0, 0.0, reason="greeting/short input")
 
     tickers = mentioned_tickers(q)
+    lower = q.lower()
+    # "compare X across all the tickers/companies in the corpus": no company is
+    # named but every one is meant. Expand to the full corpus so it routes to a
+    # per-company COMPARISON instead of being mistaken for a corpus meta-question.
+    if not tickers and _is_all_corpus_content(q, lower):
+        tickers = list(config.COMPANIES)
     # A corpus/meta question with no specific company named is answered directly
     # from the corpus metadata, not via retrieval (see is_corpus_query).
     if not tickers and is_corpus_query(q):
@@ -217,7 +260,6 @@ def route(query: str) -> Route:
     # A single named company scopes retrieval to that filing (see module docstring).
     scope = tuple(tickers)  # () or one ticker
 
-    lower = q.lower()
     words = _WORD_RE.findall(q)
     lex = _lexical_score(q, lower, words)
     sem = _semantic_score(lower, words)

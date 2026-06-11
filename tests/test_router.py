@@ -6,6 +6,7 @@ that weights are sane, and that the router never raises on adversarial input.
 """
 import pytest
 
+import config
 from src import router
 from src.router import (
     COMPARISON,
@@ -75,6 +76,37 @@ def test_two_or_more_companies_routes_comparison(q, n):
 
 def test_single_company_is_not_comparison():
     assert route("what were Apple's total net sales").kind != COMPARISON
+
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        # Regression: "corpus"/"tickers" as a *scope* word for a content question
+        # must not be mistaken for a corpus meta-listing. These name no company but
+        # span every one, so they fan out to a full-corpus per-company comparison.
+        "Compare Cloud Based Spending across all the Tickers in the Corpus?",
+        "rank all companies by revenue",
+        "average R&D spend across all five companies",
+        "which company has the highest operating margin across the corpus",
+    ],
+)
+def test_corpus_wide_content_question_routes_comparison(q):
+    r = route(q)
+    assert r.kind == COMPARISON
+    assert len(r.tickers) == len(config.COMPANIES)
+
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        # A bare listing that spans the corpus is still a meta-question, not a
+        # content comparison — no analytical intent, so it stays CORPUS.
+        "list all the companies in the corpus",
+        "show me all the tickers you have",
+    ],
+)
+def test_corpus_wide_listing_stays_corpus(q):
+    assert route(q).kind == CORPUS
 
 
 @pytest.mark.parametrize(

@@ -85,6 +85,43 @@ with st.sidebar:
     st.markdown("**Corpus**")
     for t, name in config.COMPANIES.items():
         st.markdown(f"- `{t}` — {name}")
+
+    with st.expander("➕ Manage corpus"):
+        st.caption(
+            "Add any US-listed company with a 10-K. It's validated against SEC "
+            "EDGAR, then downloaded, chunked, embedded and indexed live."
+        )
+        new_ticker = st.text_input(
+            "Ticker to add", placeholder="e.g. TSLA", key="add_ticker"
+        ).strip().upper()
+        if st.button("Add company", disabled=not new_ticker, use_container_width=True):
+            from src.corpus import add_company
+
+            with st.spinner(f"Adding {new_ticker}: validating → downloading 10-K → indexing…"):
+                res = add_company(new_ticker)
+            if res.ok:
+                config.reload_registry()
+                load_pipeline.clear()  # drop cached pipelines so the new ticker is retrievable
+                st.success(res.message)
+                st.rerun()
+            else:
+                st.error(res.message)
+
+        removable = list(config.COMPANIES)
+        if removable:
+            drop = st.selectbox("Remove a company", ["—"] + removable, key="drop_ticker")
+            if st.button("Remove", disabled=drop == "—", use_container_width=True):
+                from src.corpus import remove_company
+
+                with st.spinner(f"Removing {drop}…"):
+                    res = remove_company(drop)
+                if res.ok:
+                    config.reload_registry()
+                    load_pipeline.clear()
+                    st.success(res.message)
+                    st.rerun()
+                else:
+                    st.error(res.message)
     # OpenAI powers embeddings (retrieval) regardless of the generation provider.
     if not config.OPENAI_API_KEY:
         st.warning("OPENAI_API_KEY not set — embeddings/retrieval will fail. Add it to .env.")

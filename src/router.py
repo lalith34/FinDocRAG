@@ -110,7 +110,8 @@ def is_corpus_query(query: str) -> bool:
 # what I have indexed" listing instead of an actual cross-company answer.
 _ALL_CORPUS_RE = re.compile(
     r"\b(all|each|every|across)\b.{0,30}\b(compan(?:y|ies)|tickers?|filings?|"
-    r"firms?|corpus|them)\b|\b(?:all|each)\s+(?:five|5)\b|"
+    r"firms?|corpus|them)\b|"
+    r"\b(?:all|each)\s+(?:\d+|two|three|four|five|six|seven|eight|nine|ten)\b|"
     r"\b(?:whole|entire)\s+corpus\b",
     re.IGNORECASE,
 )
@@ -141,22 +142,15 @@ def _is_all_corpus_content(query: str, lower: str) -> bool:
 # --- Company detection -------------------------------------------------------
 # Name aliases beyond the ticker itself, so "compare Apple and Google sales" is
 # recognised as a multi-company query the same way "AAPL GOOGL" is. 10-K bodies
-# use company names, never tickers, so detection must cover both.
-_NAME_ALIASES: dict[str, tuple[str, ...]] = {
-    "AAPL": ("apple",),
-    "NVDA": ("nvidia",),
-    "MSFT": ("microsoft",),
-    "GOOGL": ("alphabet", "google", "goog"),
-    "AMZN": ("amazon",),
-}
-
-
+# use company names, never tickers, so detection must cover both. Aliases come
+# from the live registry (config.COMPANY_ALIASES), so a ticker added at runtime is
+# detected by name without a code change.
 def mentioned_tickers(query: str) -> list[str]:
     """Tickers explicitly named in the query (by symbol or company name)."""
     q = query.lower()
     found = []
     for tk in config.COMPANIES:
-        aliases = (tk.lower(),) + _NAME_ALIASES.get(tk, ())
+        aliases = (tk.lower(),) + tuple(config.COMPANY_ALIASES.get(tk, ()))
         if any(re.search(rf"\b{re.escape(a)}\b", q) for a in aliases):
             found.append(tk)
     return found
@@ -178,12 +172,17 @@ _LINE_ITEM_TERMS = (
 
 # Short uppercase acronyms analysts type verbatim (exact-match territory).
 _ACRONYM_RE = re.compile(r"\b[A-Z][A-Z&]{1,5}\b")
+
+
 # Company names/tickers are subjects, not exact-match metrics: an all-caps name
-# like "NVIDIA" must not be counted as a lexical acronym (that would wrongly pull
-# a conceptual question about the company toward BM25).
-_COMPANY_TOKENS = {tk.upper() for tk in config.COMPANIES} | {
-    alias.upper() for aliases in _NAME_ALIASES.values() for alias in aliases
-}
+# like "NVIDIA" (or a newly added ticker like "TSLA") must not be counted as a
+# lexical acronym (that would wrongly pull a conceptual question about the company
+# toward BM25). Read live from the registry so runtime-added tickers are covered.
+def _company_tokens() -> set[str]:
+    toks = {tk.upper() for tk in config.COMPANIES}
+    for aliases in config.COMPANY_ALIASES.values():
+        toks |= {a.upper() for a in aliases}
+    return toks
 # A specific figure being asked for: $, %, or a multi-digit number.
 _NUMBER_RE = re.compile(r"\$\s?\d|\d+\s?%|\b\d{2,}\b")
 _QUOTED_RE = re.compile(r"\"[^\"]+\"|'[^']+'")
@@ -215,7 +214,8 @@ def _lexical_score(q: str, lower: str, words: list[str]) -> int:
         score += 2
     # Acronyms and explicit numbers each contribute, capped so a figure-heavy
     # sentence cannot runaway-dominate. Company names are excluded (see above).
-    acronyms = [a for a in _ACRONYM_RE.findall(q) if a.upper() not in _COMPANY_TOKENS]
+    company_tokens = _company_tokens()
+    acronyms = [a for a in _ACRONYM_RE.findall(q) if a.upper() not in company_tokens]
     score += min(2, len(acronyms))
     if _NUMBER_RE.search(q):
         score += 1

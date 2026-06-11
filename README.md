@@ -14,7 +14,7 @@ plus an evaluation report and a chatbot UI.
 | Layer | Choice |
 |---|---|
 | **Use case** | Analysts asking factual questions over annual filings, in a chat UI |
-| **Corpus** | Latest `10-K` for 5 mega-caps, auto-pulled from SEC EDGAR |
+| **Corpus** | Latest `10-K`s, auto-pulled from SEC EDGAR. Ships with 5 mega-caps; any US-listed company with a 10-K can be added/removed at runtime (registry-backed, no code edits) |
 | **Ingestion + cleaning** | EDGAR submissions API → primary doc HTML → strip script/style, decode entities, **flatten tables to pipe-delimited rows** (table-aware) |
 | **Chunking** | `fixed` (800-tok window, 120 overlap) **vs** `semantic` (sentence-grouped, break at 90th-pct embedding-distance) — compared in the eval |
 | **Embedding** | OpenAI `text-embedding-3-small` (1536-dim) with on-disk cache |
@@ -55,6 +55,22 @@ python -m scripts.ask "What were Apple's total net sales last year?"
 # 3b. Or launch the chatbot UI
 streamlit run app.py
 ```
+
+### Manage the corpus (add/remove companies)
+
+The corpus is data, not code — companies live in a registry (`data/companies.json`),
+so adding one is a single command, not an edit + full rebuild. Each add is validated
+against SEC EDGAR (unknown symbol or a foreign filer with no 10-K is rejected with a
+clear message), then only that ticker is ingested, chunked, embedded and indexed; the
+rest of the corpus is untouched.
+
+```bash
+python -m scripts.add_company TSLA META   # validate -> download 10-K -> index
+python -m scripts.remove_company TSLA      # delete vectors + snapshots + files
+```
+
+The Streamlit sidebar's **➕ Manage corpus** panel does the same thing live (handy for
+a demo): type a ticker, click **Add company**, then immediately ask about it.
 
 ## Layout
 

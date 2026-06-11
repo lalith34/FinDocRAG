@@ -1,7 +1,9 @@
 """Central configuration for the Financial Document Intelligence RAG pipeline."""
 from __future__ import annotations
 
+import json
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,15 +24,95 @@ FEEDBACK_LOG = LOGS_DIR / "feedback.jsonl"
 for _d in (RAW_DIR, PROCESSED_DIR, INDEX_DIR, LOGS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
-# --- Corpus ------------------------------------------------------------------
-# Ticker -> human readable company name. CIKs are resolved at ingest time.
-COMPANIES: dict[str, str] = {
-    "AAPL": "Apple Inc.",
-    "NVDA": "NVIDIA Corporation",
-    "MSFT": "Microsoft Corporation",
-    "GOOGL": "Alphabet Inc.",
-    "AMZN": "Amazon.com, Inc.",
+# --- Corpus (registry-backed) ------------------------------------------------
+# The corpus is *data, not code*: companies live in a JSON registry on disk
+# (data/companies.json) so a ticker can be added or removed at runtime — see
+# src/corpus.py — without editing this file. CIKs are resolved at ingest time.
+#
+# The seed below is just the five mega-caps the project ships with, plus the
+# curated name aliases the router matches on ("apple", "google"/"goog", ...). On
+# first run (no registry file) the seed is used; once a company is added/removed
+# the registry file becomes the source of truth.
+COMPANIES_FILE = DATA_DIR / "companies.json"
+
+# ticker -> (human-readable name, extra name aliases the router should match)
+_SEED_COMPANIES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "AAPL": ("Apple Inc.", ("apple",)),
+    "NVDA": ("NVIDIA Corporation", ("nvidia",)),
+    "MSFT": ("Microsoft Corporation", ("microsoft",)),
+    "GOOGL": ("Alphabet Inc.", ("alphabet", "google", "goog")),
+    "AMZN": ("Amazon.com, Inc.", ("amazon",)),
 }
+
+# Corporate-form words dropped when auto-deriving a name alias for a new ticker,
+# so "Tesla, Inc." -> "tesla" and "Meta Platforms, Inc." -> "meta".
+_CORP_SUFFIXES = {
+    "inc", "incorporated", "corp", "corporation", "company", "co", "ltd",
+    "limited", "plc", "llc", "lp", "holdings", "holding", "group", "platforms",
+    "technologies", "technology", "international", "industries", "the", "and",
+}
+
+
+def derive_aliases(name: str) -> list[str]:
+    """Best-effort name alias for a company so the router matches the name, not
+    just the ticker. Takes the first 'significant' word of the official SEC name
+    with corporate-form words stripped. Deterministic; lowercased."""
+    words = re.findall(r"[A-Za-z][A-Za-z&'.-]*", name or "")
+    sig = [w for w in words if w.lower().strip(".") not in _CORP_SUFFIXES]
+    return [sig[0].lower()] if sig else []
+
+
+def _seed_registry() -> dict[str, dict]:
+    return {tk: {"name": n, "aliases": list(a)} for tk, (n, a) in _SEED_COMPANIES.items()}
+
+
+def load_registry() -> dict[str, dict]:
+    """Load the company registry from disk, falling back to the shipped seed when
+    the file is missing or unreadable — a corrupt file must never break startup."""
+    if COMPANIES_FILE.exists():
+        try:
+            raw = json.loads(COMPANIES_FILE.read_text(encoding="utf-8"))
+            reg = {
+                str(tk).upper(): {
+                    "name": str(v["name"]),
+                    "aliases": [str(a).lower() for a in v.get("aliases", [])],
+                }
+                for tk, v in raw.items()
+            }
+            if reg:
+                return reg
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            pass  # fall through to the seed
+    return _seed_registry()
+
+
+def save_registry(registry: dict[str, dict]) -> None:
+    COMPANIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COMPANIES_FILE.write_text(
+        json.dumps(registry, indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+
+# Live corpus views, rebuilt from the registry. Modules read these as
+# `config.COMPANIES` / `config.COMPANY_ALIASES`; reload_registry() refreshes them
+# *in place* after an add/remove so a long-running process (the Streamlit app)
+# picks up the change without a restart.
+COMPANIES: dict[str, str] = {}
+COMPANY_ALIASES: dict[str, tuple[str, ...]] = {}
+
+
+def reload_registry() -> dict[str, dict]:
+    """Re-read the registry and refresh COMPANIES / COMPANY_ALIASES in place."""
+    reg = load_registry()
+    COMPANIES.clear()
+    COMPANY_ALIASES.clear()
+    for tk in sorted(reg):
+        COMPANIES[tk] = reg[tk]["name"]
+        COMPANY_ALIASES[tk] = tuple(reg[tk]["aliases"])
+    return reg
+
+
+reload_registry()
 
 # --- SEC / EDGAR -------------------------------------------------------------
 # SEC requires a descriptive User-Agent with contact info.

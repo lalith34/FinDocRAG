@@ -64,12 +64,21 @@ def build_indexes(
     do_ingest: bool = True,
     force: bool = False,
     refresh_raw: bool = False,
+    tickers: list[str] | None = None,
 ) -> dict:
+    """Build/refresh the indexes. When `tickers` is given, ingest and rebuild only
+    those companies (the rest of the corpus is left in place) — this is the fast
+    path for adding a single company at runtime."""
+    if tickers is not None:
+        tickers = [t.upper() for t in tickers]
     if do_ingest:
-        ingest_results = ingest.ingest_all(force=force, refresh_raw=refresh_raw)
+        subset = {t: config.COMPANIES[t] for t in tickers} if tickers else None
+        ingest_results = ingest.ingest_all(
+            companies=subset, force=force, refresh_raw=refresh_raw
+        )
         changed_tickers = {t for t, (_, changed) in ingest_results.items() if changed}
     else:
-        changed_tickers = set(config.COMPANIES)
+        changed_tickers = set(tickers) if tickers else set(config.COMPANIES)
 
     docs = ingest.load_processed()
     if not docs:

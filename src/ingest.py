@@ -98,6 +98,17 @@ def _get(url: str, *, as_json: bool = False):
     return resp.json() if as_json else resp.text
 
 
+def resolve_company(ticker: str) -> tuple[int, str]:
+    """Return (cik, official company name) for a ticker from SEC's table. Raises
+    KeyError if the symbol is not a recognised SEC filer."""
+    data = _get(_TICKERS_URL, as_json=True)
+    t = ticker.upper()
+    for v in data.values():
+        if v["ticker"].upper() == t:
+            return int(v["cik_str"]), str(v.get("title") or ticker)
+    raise KeyError(f"Ticker {ticker} not found in SEC ticker table")
+
+
 def resolve_ciks(tickers: list[str]) -> dict[str, int]:
     data = _get(_TICKERS_URL, as_json=True)
     table = {v["ticker"].upper(): int(v["cik_str"]) for v in data.values()}

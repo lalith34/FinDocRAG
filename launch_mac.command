@@ -14,7 +14,7 @@ if [ -d ".venv" ]; then
 else
   echo
   echo "No .venv found. Run the one-time setup first:"
-  echo "  python3 -m venv .venv"
+  echo "  python3.11 -m venv .venv"
   echo "  source .venv/bin/activate"
   echo "  pip install -r requirements.txt"
   echo

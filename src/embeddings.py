@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import pickle
-from pathlib import Path
 
 import numpy as np
 import tiktoken

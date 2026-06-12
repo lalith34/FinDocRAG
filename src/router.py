@@ -50,7 +50,6 @@ class Route:
     dense_weight: float = 1.0
     sparse_weight: float = 1.0
     tickers: tuple[str, ...] = ()
-    reason: str = ""
 
 
 # --- Smalltalk ---------------------------------------------------------------
@@ -237,7 +236,7 @@ def route(query: str) -> Route:
     """Classify a query into a retrieval Route. Pure and deterministic."""
     q = query.strip()
     if is_smalltalk(q):
-        return Route(SMALLTALK, 0.0, 0.0, reason="greeting/short input")
+        return Route(SMALLTALK, 0.0, 0.0)
 
     tickers = mentioned_tickers(q)
     lower = q.lower()
@@ -249,13 +248,9 @@ def route(query: str) -> Route:
     # A corpus/meta question with no specific company named is answered directly
     # from the corpus metadata, not via retrieval (see is_corpus_query).
     if not tickers and is_corpus_query(q):
-        return Route(CORPUS, 0.0, 0.0, reason="corpus/meta question")
+        return Route(CORPUS, 0.0, 0.0)
     if len(tickers) >= 2:
-        return Route(
-            COMPARISON,
-            tickers=tuple(tickers),
-            reason=f"{len(tickers)} companies named",
-        )
+        return Route(COMPARISON, tickers=tuple(tickers))
 
     # A single named company scopes retrieval to that filing (see module docstring).
     scope = tuple(tickers)  # () or one ticker
@@ -266,9 +261,7 @@ def route(query: str) -> Route:
     margin = lex - sem
 
     if margin >= _DECISION_MARGIN:
-        return Route(LEXICAL, dense_weight=1.0, sparse_weight=2.0, tickers=scope,
-                     reason=f"lexical signals dominate (lex={lex}, sem={sem})")
+        return Route(LEXICAL, dense_weight=1.0, sparse_weight=2.0, tickers=scope)
     if -margin >= _DECISION_MARGIN:
-        return Route(SEMANTIC, dense_weight=2.0, sparse_weight=1.0, tickers=scope,
-                     reason=f"semantic signals dominate (lex={lex}, sem={sem})")
-    return Route(HYBRID, tickers=scope, reason=f"balanced (lex={lex}, sem={sem})")
+        return Route(SEMANTIC, dense_weight=2.0, sparse_weight=1.0, tickers=scope)
+    return Route(HYBRID, tickers=scope)

@@ -11,7 +11,7 @@ Both emit a common Chunk record so the rest of the pipeline is strategy-agnostic
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, fields
 
 import numpy as np
 import tiktoken
@@ -32,7 +32,13 @@ class Chunk:
     token_count: int
     position: int  # ordinal within the document
     section: str = ""  # 10-K item the chunk falls under (e.g. "Risk Factors")
-    meta: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Chunk":
+        """Build from a JSON snapshot record, dropping keys that are no longer
+        fields (e.g. the removed `meta`) so older on-disk snapshots still load."""
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in names})
 
 
 def n_tokens(text: str) -> int:

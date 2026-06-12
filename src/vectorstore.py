@@ -111,7 +111,7 @@ class PineconeStore:
         if not self._chunks_path.exists():
             return []
         raw = json.loads(self._chunks_path.read_text(encoding="utf-8"))
-        return [Chunk(**c) for c in raw]
+        return [Chunk.from_dict(c) for c in raw]
 
     def save_chunks(self, chunks: list[Chunk]) -> None:
         chunks = sorted(chunks, key=lambda c: c.chunk_id)

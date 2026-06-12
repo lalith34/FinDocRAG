@@ -59,7 +59,7 @@ def load_chunks(ticker: str) -> list[Chunk]:
             f"No chunk snapshot at {snap}. Run `python -m scripts.build_index` first."
         )
     raw = json.loads(snap.read_text(encoding="utf-8"))
-    return [Chunk(**c) for c in raw if c["ticker"] == ticker]
+    return [Chunk.from_dict(c) for c in raw if c["ticker"] == ticker]
 
 
 # --- tree build --------------------------------------------------------------

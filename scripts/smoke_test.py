@@ -16,7 +16,6 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import config  # noqa: E402
 from src import ingest  # noqa: E402
 from src.chunking import chunk_document  # noqa: E402
 from src.vectorstore import rrf_fuse, _tokenize  # noqa: E402

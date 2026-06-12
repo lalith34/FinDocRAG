@@ -131,9 +131,9 @@ of the chunk itself. The section rides into Pinecone metadata, `chunks.json`, th
   (120–1000) so chunks stay embeddable. A hard 500-token sentence ceiling stops a
   giant flattened table from blowing the embed limit.
 
-> **Note — `Chunk.meta` is vestigial:** the field exists but is never assigned
-> (`chunk_document` doesn't set it) and never read (`upsert` builds Pinecone
-> metadata from explicit fields). Always `{}`. Safe to remove if touched.
+> **Note — snapshot loading:** `Chunk.from_dict` drops unknown keys, so on-disk
+> `chunks.json` snapshots written by an older schema (e.g. the since-removed
+> vestigial `meta` field) still load without a rebuild.
 
 ## 7. Router — `src/router.py`
 
@@ -161,8 +161,6 @@ Company detection (`mentioned_tickers`) and the company-token guard
 *and* name with no code change — and a new 4-letter ticker like `TSLA` isn't
 miscounted as a lexical acronym.
 
-> **Note — `Route.reason`** is populated but only consumed by router tests; it is
-> not logged into `QueryTrace`. Debug-only.
 
 ## 8. Rerank — `src/rerank.py`
 
@@ -402,7 +400,5 @@ CI: `.github/workflows/ci.yml`.
 
 ## 16. Known minor cleanup items
 
-1. `Chunk.meta` — declared, never set or read (§6). Removable.
-2. `Route.reason` — set but only tested, not logged into `QueryTrace` (§7).
-3. (Resolved) README architecture drift — synced to Pinecone + ONNX in commit
-   `5a1b374`.
+(none currently — `Chunk.meta` and write-only `Route.reason` were removed, and
+README architecture drift was synced in `5a1b374`.)

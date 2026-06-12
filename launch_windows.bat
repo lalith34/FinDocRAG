@@ -25,7 +25,7 @@ REM 2. Sanity-check secrets (warn, don't block).
 if not exist ".env" (
   echo.
   echo WARNING: no .env found. Copy .env.example to .env and add your API keys
-  echo          ^(OPENAI_API_KEY, ANTHROPIC_API_KEY, PINECONE_API_KEY^).
+  echo          ^(ANTHROPIC_API_KEY, OPENAI_API_KEY, PINECONE_API_KEY, NEBIUS_API_KEY^).
   echo.
 )
 

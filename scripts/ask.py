@@ -22,10 +22,18 @@ def main():
     ap.add_argument("--strategy", default="semantic", choices=list(config.STRATEGIES))
     ap.add_argument("--no-rerank", action="store_true")
     ap.add_argument("--top-k", type=int, default=config.TOP_K)
+    ap.add_argument(
+        "--model",
+        default=None,
+        help="answer model id (any Anthropic/OpenAI/Nebius model from the "
+        f"configured menus; default {config.CHAT_MODEL})",
+    )
     args = ap.parse_args()
 
     pipe = RAGPipeline(strategy=args.strategy)
-    result = pipe.answer(args.question, use_rerank=not args.no_rerank, top_k=args.top_k)
+    result = pipe.answer(
+        args.question, use_rerank=not args.no_rerank, top_k=args.top_k, model=args.model
+    )
 
     print("\n" + "=" * 70)
     print(result.answer.text)

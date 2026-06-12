@@ -1,7 +1,8 @@
 """Shared retry/backoff decorators (tenacity) for every external call site:
-SEC EDGAR (requests), OpenAI (embeddings), Anthropic (generation + judge), and
-Pinecone. SDK clients are constructed with max_retries=0 so tenacity owns the
-retry policy and we don't double-backoff.
+SEC EDGAR (requests), OpenAI (embeddings), Anthropic (generation + judge),
+Nebius Token Factory (OpenAI-compatible generation), and Pinecone. SDK clients
+are constructed with max_retries=0 so tenacity owns the retry policy and we
+don't double-backoff.
 """
 from __future__ import annotations
 

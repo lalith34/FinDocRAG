@@ -4,6 +4,14 @@
 anthropic==0.109.1
 openai==2.41.0
 python-dotenv==1.2.2
+
+# Orchestration (LangGraph state machine) + LangChain chat-model wrappers for the
+# three generation providers. Pinned to the langchain-core 0.3 line so the RAGAS
+# eval stack (requirements-eval.txt) installs alongside without conflicts.
+langgraph==0.6.11
+langchain-core==0.3.86
+langchain-anthropic==0.3.22
+langchain-openai==0.3.35
 numpy==2.4.6
 pandas==3.0.3
 tiktoken==0.13.0

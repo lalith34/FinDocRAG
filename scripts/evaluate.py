@@ -30,7 +30,7 @@ from src import embeddings  # noqa: E402
 from src.eval_utils import is_relevant, rank_metrics  # noqa: E402
 from src.generate import generate  # noqa: E402
 from src.pipeline import RAGPipeline  # noqa: E402
-from src.reliability import anthropic_retry, make_anthropic_client  # noqa: E402
+from src.reliability import anthropic_retry, make_anthropic_client, openai_retry  # noqa: E402
 from src.rerank import rerank  # noqa: E402
 from src.vectorstore import PineconeStore  # noqa: E402
 
@@ -57,12 +57,26 @@ def gold_chunks(store: PineconeStore, query: dict, k: int) -> list:
 # (hybrid -> rerank -> generate) is cached to a JSONL so re-scoring with RAGAS
 # never re-spends those tokens; RAGAS then scores faithfulness, answer relevancy,
 # and context precision/recall with its own LLM-as-judge.
-def _ragas_ckpt_path(queries_name: str, strategy: str) -> Path:
+def _ckpt_suffix(model: str | None, judge_model: str | None = None) -> str:
+    """Checkpoint filename suffix for non-default generation/judge models, so
+    verdicts for different (generator, judge) pairs never mix (and the defaults
+    keep their legacy names)."""
+    suffix = ""
+    if model and model != config.CHAT_MODEL:
+        suffix += "_" + model.replace("/", "-").replace(":", "-")
+    if judge_model and judge_model != config.JUDGE_MODEL:
+        suffix += "_j-" + judge_model.replace("/", "-").replace(":", "-")
+    return suffix
+
+
+def _ragas_ckpt_path(queries_name: str, strategy: str, model: str | None = None) -> Path:
     stem = Path(queries_name).stem
-    return config.LOGS_DIR / f"ragas_inputs_{stem}_{strategy}.jsonl"
+    return config.LOGS_DIR / f"ragas_inputs_{stem}_{strategy}{_ckpt_suffix(model)}.jsonl"
 
 
-def build_ragas_rows(pipe, answerable, ckpt: Path, *, fresh=False, pace=0.0) -> list[dict]:
+def build_ragas_rows(
+    pipe, answerable, ckpt: Path, *, fresh=False, pace=0.0, model=None
+) -> list[dict]:
     if fresh:
         ckpt.unlink(missing_ok=True)
     done = _load_judge_ckpt(ckpt)  # same id-keyed JSONL resume loader
@@ -75,7 +89,7 @@ def build_ragas_rows(pipe, answerable, ckpt: Path, *, fresh=False, pace=0.0) -> 
             # Go through the production pipeline (router + COMPARISON per-ticker
             # quota), not a flat hybrid->rerank top-k, so the scored answer is the
             # one the app would actually produce.
-            res = pipe.answer(q["question"])
+            res = pipe.answer(q["question"], model=model)
             top = res.retrieved
             row = {
                 "id": q["id"],
@@ -200,35 +214,61 @@ def _extract_json(text: str) -> dict:
         raise
 
 
-def judge_answer(question: str, answer_text: str, sources_text: str) -> dict:
-    # The judge runs on JUDGE_MODEL (a different, lighter Claude than generation),
-    # so it draws from a separate per-model rate-limit bucket and is not the same
-    # model it is grading. output_config pins the reply to valid JSON.
-    client = make_anthropic_client()
+def judge_answer(
+    question: str, answer_text: str, sources_text: str, model: str | None = None
+) -> dict:
+    # The judge defaults to JUDGE_MODEL (a different, lighter model than
+    # generation), so it draws from a separate per-model rate-limit bucket and is
+    # not the same model it is grading. --judge-model can point it at any
+    # configured provider (e.g. a Nebius model for an all-open-source eval).
+    model = model or config.JUDGE_MODEL
+    provider = config.model_provider(model)
+    user_content = (
+        f"QUESTION:\n{question}\n\nSOURCES:\n{sources_text}\n\nANSWER:\n{answer_text}"
+    )
 
-    @anthropic_retry
-    def _call():
-        return client.messages.create(
-            model=config.JUDGE_MODEL,
-            max_tokens=256,
-            system=_JUDGE_SYS,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"QUESTION:\n{question}\n\nSOURCES:\n{sources_text}\n\nANSWER:\n{answer_text}",
+    if provider == "anthropic":
+        # output_config pins the reply to schema-valid JSON.
+        client = make_anthropic_client()
+
+        @anthropic_retry
+        def _call():
+            return client.messages.create(
+                model=model,
+                max_tokens=256,
+                system=_JUDGE_SYS,
+                messages=[{"role": "user", "content": user_content}],
+                output_config={
+                    "format": {"type": "json_schema", "schema": _JUDGE_SCHEMA}
                 },
-            ],
-            output_config={"format": {"type": "json_schema", "schema": _JUDGE_SCHEMA}},
-        )
+            )
 
-    resp = _call()
-    text = "".join(b.text for b in resp.content if b.type == "text")
+        resp = _call()
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        stop = resp.stop_reason
+    else:
+        # OpenAI/Nebius judge: reuse the cached LangChain wrappers from generate;
+        # the prompt demands bare JSON and _extract_json tolerates stray prose.
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from src.generate import _get_chat_model
+
+        @openai_retry
+        def _call():
+            return _get_chat_model(provider, model).invoke(
+                [SystemMessage(content=_JUDGE_SYS), HumanMessage(content=user_content)]
+            )
+
+        msg = _call()
+        text = msg.content if isinstance(msg.content, str) else str(msg.content)
+        stop = (getattr(msg, "response_metadata", {}) or {}).get("finish_reason")
+
     try:
         return _extract_json(text)
     except (json.JSONDecodeError, ValueError):
         # A single unparseable verdict (e.g. a safety refusal) must not nuke a long
         # run; flag it so it's visible in the report rather than silently scored.
-        print(f"  [judge] WARN unparseable verdict (stop={resp.stop_reason!r}); "
+        print(f"  [judge] WARN unparseable verdict (stop={stop!r}); "
               "defaulting to 0/0", flush=True)
         return {"faithfulness": 0, "relevance": 0, "_parse_error": True}
 
@@ -239,9 +279,14 @@ def judge_answer(question: str, answer_text: str, sources_text: str) -> dict:
 # JSONL checkpoint as soon as it is computed and resume from it on the next run,
 # so a crash (or Ctrl-C) never throws away completed work — only the in-flight
 # question is repeated.
-def _judge_ckpt_path(queries_name: str, strategy: str) -> Path:
+def _judge_ckpt_path(
+    queries_name: str, strategy: str, model: str | None = None,
+    judge_model: str | None = None,
+) -> Path:
     stem = Path(queries_name).stem
-    return config.LOGS_DIR / f"judge_{stem}_{strategy}.jsonl"
+    return config.LOGS_DIR / (
+        f"judge_{stem}_{strategy}{_ckpt_suffix(model, judge_model)}.jsonl"
+    )
 
 
 def _load_judge_ckpt(path: Path) -> dict[str, dict]:
@@ -285,6 +330,21 @@ def main():
         "retrieval, to separate retrieval failures from generation failures.",
     )
     ap.add_argument(
+        "--model",
+        default=None,
+        help="generation model for the judged/RAGAS passes (any configured "
+        "Anthropic/OpenAI/Nebius id, e.g. openai/gpt-oss-120b). Default: "
+        "config.CHAT_MODEL. A non-default model gets its own judge/RAGAS "
+        "checkpoints and the report records the generator used.",
+    )
+    ap.add_argument(
+        "--judge-model",
+        default=None,
+        help="LLM-judge model (any configured Anthropic/OpenAI/Nebius id). "
+        "Default: config.JUDGE_MODEL. Pick a different family than --model so "
+        "the judge isn't grading its own output.",
+    )
+    ap.add_argument(
         "--ragas",
         action="store_true",
         help="also score generation with the RAGAS framework (faithfulness, answer "
@@ -292,6 +352,14 @@ def main():
         "`pip install -r requirements-eval.txt`.",
     )
     args = ap.parse_args()
+
+    gen_model = args.model or config.CHAT_MODEL
+    judge_model = args.judge_model or config.JUDGE_MODEL
+    config.model_provider(gen_model)  # fail fast on a typo'd model id
+    config.model_provider(judge_model)
+    if judge_model == gen_model:
+        print(f"WARN: judge and generator are the same model ({gen_model}) — "
+              "self-grading weakens the eval methodology.", flush=True)
 
     queries = json.loads((config.EVAL_DIR / args.queries).read_text())
     answerable = [q for q in queries if not q["expect_refusal"]]
@@ -325,7 +393,7 @@ def main():
         # router + COMPARISON per-ticker quota are exercised, not a flat top-k.
         pipe = RAGPipeline(gen_strategy)
 
-        ckpt = _judge_ckpt_path(args.queries, gen_strategy)
+        ckpt = _judge_ckpt_path(args.queries, gen_strategy, gen_model, judge_model)
         if args.fresh_judge:
             ckpt.unlink(missing_ok=True)
         done = _load_judge_ckpt(ckpt)
@@ -340,11 +408,11 @@ def main():
                 if q["id"] in done:
                     gen_rows.append(done[q["id"]])
                     continue
-                res = pipe.answer(q["question"])
+                res = pipe.answer(q["question"], model=gen_model)
                 top = res.retrieved
                 ans = res.answer
                 src_text = "\n\n".join(f"[{i+1}] {c.text}" for i, c in enumerate(top))
-                verdict = judge_answer(q["question"], ans.text, src_text)
+                verdict = judge_answer(q["question"], ans.text, src_text, judge_model)
                 rec = {"id": q["id"], **verdict}
                 fh.write(json.dumps(rec) + "\n")
                 fh.flush()
@@ -355,7 +423,7 @@ def main():
                     time.sleep(args.pace)
 
         for q in refusal_qs:
-            res = pipe.answer(q["question"])
+            res = pipe.answer(q["question"], model=gen_model)
             refusal_results.append((q["id"], res.answer.refused))
             print(f"  [refusal] {q['id']} refused={res.answer.refused}", flush=True)
 
@@ -363,8 +431,11 @@ def main():
         # bypassing retrieval, so a low score here points at the prompt/model and a
         # high score here (with a low full-pipeline score) points at retrieval.
         if args.isolate_generation:
-            iso_ckpt = _judge_ckpt_path(args.queries, gen_strategy).with_name(
-                f"judge_iso_{Path(args.queries).stem}_{gen_strategy}.jsonl"
+            iso_ckpt = _judge_ckpt_path(
+                args.queries, gen_strategy, gen_model, judge_model
+            ).with_name(
+                f"judge_iso_{Path(args.queries).stem}_{gen_strategy}"
+                f"{_ckpt_suffix(gen_model, judge_model)}.jsonl"
             )
             if args.fresh_judge:
                 iso_ckpt.unlink(missing_ok=True)
@@ -378,11 +449,11 @@ def main():
                     if not gold:
                         print(f"  [iso] {q['id']} no gold chunks; skipped", flush=True)
                         continue
-                    ans = generate(q["question"], gold)
+                    ans = generate(q["question"], gold, model=gen_model)
                     src_text = "\n\n".join(
                         f"[{i+1}] {c.text}" for i, c in enumerate(gold)
                     )
-                    verdict = judge_answer(q["question"], ans.text, src_text)
+                    verdict = judge_answer(q["question"], ans.text, src_text, judge_model)
                     rec = {"id": q["id"], "n_gold": len(gold), **verdict}
                     fh.write(json.dumps(rec) + "\n")
                     fh.flush()
@@ -401,21 +472,30 @@ def main():
         rows = build_ragas_rows(
             rpipe,
             answerable,
-            _ragas_ckpt_path(args.queries, gen_strategy),
+            _ragas_ckpt_path(args.queries, gen_strategy, gen_model),
             fresh=args.fresh_judge,
             pace=args.pace,
+            model=gen_model,
         )
         print("  [ragas] scoring with RAGAS ...", flush=True)
         ragas_scores = score_ragas(rows)
 
     write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
-                 refusal_results, ragas_scores)
+                 refusal_results, ragas_scores, gen_model=gen_model,
+                 judge_model=judge_model)
 
 
 def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
-                 refusal_results, ragas_scores=None):
+                 refusal_results, ragas_scores=None, gen_model=None, judge_model=None):
+    gen_model = gen_model or config.CHAT_MODEL
+    judge_model = judge_model or config.JUDGE_MODEL
     lines = ["# Financial RAG — Evaluation Report", ""]
-    lines += [f"_Query set: `{args.queries}` ({len(answerable)} answerable queries)._", ""]
+    lines += [
+        f"_Query set: `{args.queries}` ({len(answerable)} answerable queries). "
+        f"Generator: `{gen_model}` ({config.model_provider(gen_model)}); "
+        f"judge: `{judge_model}` ({config.model_provider(judge_model)})._",
+        "",
+    ]
 
     # corpus summary
     lines += ["## Corpus", "", "| Ticker | Company | Form | Filed | Chars |", "|---|---|---|---|---|"]
@@ -498,6 +578,8 @@ def write_report(args, answerable, chunk_rows, rerank_rows, gen_rows, iso_rows,
         n_parse_err = sum(1 for r in gen_rows if r.get("_parse_error"))
         lines += [
             "## 3. Generation quality (LLM judge, full pipeline)",
+            "",
+            f"Answers generated by `{gen_model}`, scored by `{judge_model}`.",
             "",
             f"- Faithfulness: **{faith*100:.0f}%**",
             f"- Relevance: **{rele*100:.0f}%**",

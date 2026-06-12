@@ -15,8 +15,10 @@ answers** and an explicit **refusal path** when the filings don't support an
 answer. It **ships with** five mega-caps (AAPL, NVDA, MSFT, GOOGL, AMZN) but the
 corpus is **registry-backed**: any US-listed 10-K filer can be added or removed at
 runtime — no code edits (§10b). A deterministic **guardrails** layer (§9b) screens
-input and validates output around the pipeline. Generation is **multi-provider**
-(Anthropic or OpenAI, chosen per query); embeddings stay on OpenAI. Delivered as a
+input and validates output around the pipeline. The query flow is orchestrated by
+a **LangGraph StateGraph** (src/graph.py); generation is **multi-provider** via
+**LangChain chat models** (Anthropic, OpenAI, or open-source models via Nebius
+Token Factory, chosen per query); embeddings stay on OpenAI. Delivered as a
 CLI and a Streamlit chatbot, plus an evaluation harness that produces the two
 required deliverables: a **chunking-strategy comparison** and a **reranking-impact
 analysis**.
@@ -33,10 +35,16 @@ EDGAR 10-K HTML ──ingest──► clean text ──chunk──► chunks ─
                                                   └──► data/index/<strategy>/chunks.json
                                                        (BM25 + eval source of truth)
 
-                    QUERY (pipeline.RAGPipeline.answer)
+                    QUERY (pipeline.RAGPipeline.answer → compiled LangGraph, src/graph.py)
 question ─[input guard]─► router ─► retrieve (hybrid: Pinecone dense + BM25, RRF) ─►
-          rerank (ONNX cross-encoder) ─► generate (Anthropic|OpenAI, cited) ─►
-          [output guard: citation audit + disclaimer] ─► Answer + QueryTrace
+          rerank (ONNX cross-encoder) ─► generate (LangChain ChatAnthropic|ChatOpenAI,
+          incl. Nebius, cited) ─► [output guard: citation audit + disclaimer] ─►
+          Answer + QueryTrace
+
+The query flow is a LangGraph StateGraph: each stage is a node, the branch
+decisions (guard-blocked, smalltalk/corpus, comparison quota, PageIndex
+eligibility, rerank toggle) are conditional edges, and `answer()` assembles the
+RAGResult + telemetry trace from the graph's final state.
 ```
 
 Build is **incremental**: ingest skips a ticker whose latest EDGAR accession
@@ -58,7 +66,8 @@ company (§10b).
 | How is **retrieval** done? | hybrid dense + BM25, fused with RRF, weights set by router | `PineconeStore.hybrid` + [src/router.py](src/router.py) |
 | Is there a **vectorless** retriever? | PageIndex: LLM navigates a tree of the filing's 10-K Items (single-company only) | [src/pageindex.py](src/pageindex.py), `answer(retriever="pageindex")` |
 | Where is **reranking**? | local ONNX cross-encoder (fastembed, no torch) | [src/rerank.py](src/rerank.py) |
-| Where is the **answer generated**? | Anthropic **or** OpenAI (default `claude-opus-4-8`), cite-everything prompt, refusal path | [src/generate.py](src/generate.py) |
+| Where is the **query flow orchestrated**? | LangGraph `StateGraph` — nodes per stage, conditional edges for routing; compiled lazily per pipeline | [src/graph.py](src/graph.py), `RAGPipeline.graph` |
+| Where is the **answer generated**? | LangChain `ChatAnthropic`/`ChatOpenAI` over Anthropic, OpenAI, **or** Nebius (default `claude-opus-4-8`), cite-everything prompt, refusal path | [src/generate.py](src/generate.py) |
 | Where is the **model chosen**? | `available_chat_models()` (filtered by which keys are set); UI dropdown → `answer(model=…)` → `generate` | [config.py](config.py), [app.py](app.py) |
 | Where are the **guardrails**? | input (injection/advice/length) + output (citation audit, disclaimer), rule-based | [src/guardrails.py](src/guardrails.py), wired in `RAGPipeline.answer` |
 | How is a **company added/removed**? | registry-backed corpus; validate vs SEC → ingest/index only that ticker | [src/corpus.py](src/corpus.py), [config.py](config.py) registry |
@@ -196,18 +205,30 @@ and the UI's **Retriever** radio.
 
 ## 9. Generate — `src/generate.py`
 
-- **Multi-provider.** `generate(query, chunks, model=…)` resolves the provider
-  with `config.model_provider(model)` and dispatches to `_chat_anthropic` or
-  `_chat_openai`, both returning a normalized `(text, usage)` so the rest of the
-  pipeline is provider-blind. Default `config.CHAT_MODEL = claude-opus-4-8`.
+- **Multi-provider via LangChain.** `generate(query, chunks, model=…)` resolves
+  the provider with `config.model_provider(model)` and invokes a cached LangChain
+  chat model: `ChatAnthropic` for Claude, `ChatOpenAI` for OpenAI, and
+  `ChatOpenAI(base_url=NEBIUS_BASE_URL)` for the **Nebius Token Factory** arm
+  (OpenAI-compatible). `_normalize_response` maps the AIMessage's
+  `usage_metadata`/`response_metadata` onto the same `(text, usage)` contract, so
+  the rest of the pipeline is provider-blind. Tenacity still owns retries
+  (wrappers are built `max_retries=0` and re-raise SDK exceptions). Default
+  `config.CHAT_MODEL = claude-opus-4-8`.
   - **OpenAI arm** pins `temperature=0` + `seed=0` (reasoning o-series models omit
     temperature and use `max_completion_tokens`).
   - **Anthropic arm** takes the system prompt as a top-level arg; Opus 4.8/4.7
     **reject** `temperature`/`seed` (they 400), so reproducibility there rests on
     the fixed prompt + pinned model id, not a sampling seed. Token counts are
     mapped onto the same `prompt_tokens`/`completion_tokens` keys telemetry expects.
+  - **Nebius arm** (Token Factory, `api.tokenfactory.nebius.com`) serves
+    open-source models (`meta-llama/Llama-3.3-70B-Instruct`, `openai/gpt-oss-120b`
+    by default) through the same `ChatOpenAI` wrapper with a custom base_url:
+    same retry policy (`openai_retry`), pinned `temperature=0` + `seed=0`
+    (vLLM-backed, so both are honored). Routed by list membership or the
+    HF-style "org/model" id heuristic. Fullwidth `【n】` citations some
+    open-weight models emit are normalized to `[n]` in `generate()`.
   - Clients are built lazily per provider, so a missing key only errors when that
-    provider is actually used — the other arm still works.
+    provider is actually used — the other arms still work.
 - The system prompt is the heart of grounding: cite every claim with `[n]`,
   quote figures exactly, **10-Ks are annual** (never fabricate quarters), map
   numbers to fiscal-year columns only when the header says so, and **refuse**
@@ -341,15 +362,16 @@ Corpus — **registry-backed**: `_SEED_COMPANIES` seeds `data/companies.json`
 `load_registry`/`save_registry`/`reload_registry` (§10b). Models —
 `EMBED_MODEL=text-embedding-3-small`, generation `CHAT_MODEL=claude-opus-4-8`
 (judge `JUDGE_MODEL=claude-sonnet-4-6`), the per-provider dropdown lists
-`ANTHROPIC_CHAT_MODELS` / `OPENAI_CHAT_MODELS` filtered by
+`ANTHROPIC_CHAT_MODELS` / `OPENAI_CHAT_MODELS` / `NEBIUS_CHAT_MODELS` filtered by
 `available_chat_models()`, with `model_provider()` routing each id; `GEN_MAX_TOKENS`,
-`MODEL_PRICES`. Pinecone (`PINECONE_INDEX_NAME`, cloud/region), reranker
+`MODEL_PRICES`; Nebius endpoint via `NEBIUS_BASE_URL`. Pinecone (`PINECONE_INDEX_NAME`, cloud/region), reranker
 (`RERANK_ONNX_MODEL`), chunking (`FIXED_*`, `SEMANTIC_*`), retrieval (`TOP_K=5`,
 `RETRIEVE_K=20`, `RRF_K=60`), and `REFUSAL_TEXT`. (Guardrail knob
 `MAX_QUERY_CHARS` lives in [src/guardrails.py](src/guardrails.py).) Secrets via
 `.env`: `OPENAI_API_KEY` (embeddings + optional OpenAI generation),
-`ANTHROPIC_API_KEY` (default generation + judge), `PINECONE_API_KEY`. The
-generation arm runs on whichever provider key is set.
+`ANTHROPIC_API_KEY` (default generation + judge), `PINECONE_API_KEY`,
+`NEBIUS_API_KEY` (optional open-source generation). The generation arm runs on
+whichever provider keys are set.
 
 ## 14. Reproducibility design (the through-line)
 
@@ -370,11 +392,13 @@ Almost every "why" in this codebase traces to determinism:
 determinism, eval labels (incl. **NDCG**), generation (**lost-in-the-middle
 ordering** in `test_generate.py`), ingest cleaning, ingest reproducibility, router
 decisions, RRF fusion, **guardrails** (`test_guardrails.py`: injection/advice/length
-blocks + citation audit + disclaimer), and the **corpus registry**
+blocks + citation audit + disclaimer), the **corpus registry**
 (`test_corpus_registry.py`: alias derivation, registry round-trip, corrupt-file
-fallback, runtime-added ticker is router-visible). 136 tests; the expensive
-Pinecone/LLM paths are exercised by the online eval, not unit tests. CI:
-`.github/workflows/ci.yml`.
+fallback, runtime-added ticker is router-visible), and the **LangGraph topology**
+(`test_graph.py`: stubbed pipeline + generate, asserting which nodes run on the
+guardrail / smalltalk / comparison / rerank-toggle paths). 142 tests; the
+expensive Pinecone/LLM paths are exercised by the online eval, not unit tests.
+CI: `.github/workflows/ci.yml`.
 
 ## 16. Known minor cleanup items
 

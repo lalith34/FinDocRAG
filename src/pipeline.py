@@ -2,20 +2,21 @@
 
 Build:  ingest (incremental by EDGAR accession) -> chunk changed tickers ->
         embed -> upsert to Pinecone -> refresh local chunks.json snapshot.
-Query:  hybrid retrieve (Pinecone dense + local BM25) -> cross-encoder rerank ->
-        cited generation, with a per-query telemetry trace.
+Query:  a compiled LangGraph StateGraph (src/graph.py): input guard -> route ->
+        hybrid retrieve (Pinecone dense + local BM25) | per-company quota |
+        PageIndex -> cross-encoder rerank -> cited generation -> citation audit,
+        with a per-query telemetry trace assembled from the final graph state.
 """
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
 import config
-from . import embeddings, guardrails, ingest, pageindex, router, telemetry
+from . import embeddings, ingest, pageindex, telemetry
 from .chunking import Chunk, chunk_document
-from .generate import Answer, generate
-from .rerank import rerank
-from .router import is_smalltalk, mentioned_tickers  # re-exported for callers
+from .generate import Answer
+from .graph import build_query_graph
+from .router import CORPUS, SMALLTALK, is_smalltalk, mentioned_tickers
 from .vectorstore import PineconeStore
 
 __all__ = ["RAGPipeline", "RAGResult", "build_indexes", "is_smalltalk", "mentioned_tickers"]
@@ -153,6 +154,16 @@ class RAGPipeline:
         self.strategy = strategy
         self.store = PineconeStore(strategy)
         self._pageindex: pageindex.PageIndexRetriever | None = None
+        self._graph = None  # compiled LangGraph, built lazily
+
+    def graph(self):
+        """Lazily compile the query StateGraph (src/graph.py) over this
+        pipeline's retrievers and the canned-reply builders."""
+        if self._graph is None:
+            self._graph = build_query_graph(
+                self, smalltalk_reply=_smalltalk_reply, corpus_reply=_corpus_reply
+            )
+        return self._graph
 
     def pageindex(self) -> pageindex.PageIndexRetriever:
         """Lazily construct the tree-navigation retriever (builds a ticker's tree
@@ -219,115 +230,63 @@ class RAGPipeline:
     ) -> RAGResult:
         model = model or config.CHAT_MODEL
 
-        # Input guardrail (deterministic, pre-retrieval): block prompt injection /
-        # instruction-extraction and deflect investment-advice solicitation before
-        # any retrieval or model call happens. A blocked query returns a safe
-        # completion and is logged with the guard that fired.
-        guard = guardrails.check_input(query)
-        if not guard.allowed:
+        # Run the compiled LangGraph: input guard -> route -> retrieve (vector /
+        # comparison quota / PageIndex) -> rerank -> generate -> citation audit.
+        # The graph returns its final state; everything below just assembles the
+        # RAGResult + telemetry trace from it.
+        state = self.graph().invoke(
+            {
+                "query": query,
+                "use_rerank": use_rerank,
+                "top_k": top_k,
+                "model": model,
+                "retriever": retriever,
+            }
+        )
+
+        # Input guard fired: safe completion, logged with the guard that tripped,
+        # no retrieval or model call happened.
+        if state["guardrail"]:
+            route = f"guardrail/{state['guardrail']}"
             trace = telemetry.QueryTrace(
                 query=query, strategy=self.strategy, reranked=False, refused=False,
-                route=f"guardrail/{guard.reason}", guardrail=guard.reason, model=model,
+                route=route, guardrail=state["guardrail"], model=model,
             )
             telemetry.log_query(trace)
             return RAGResult(
                 query=query,
-                answer=Answer(text=guard.reply, sources=[], refused=False),
+                answer=state["answer"],
                 retrieved=[],
                 strategy=self.strategy,
                 reranked=False,
-                route=f"guardrail/{guard.reason}",
+                route=route,
                 retriever=retriever,
-                guardrail=guard.reason,
+                guardrail=state["guardrail"],
                 trace=trace,
             )
 
-        r = router.route(query)
-        if r.kind in (router.SMALLTALK, router.CORPUS):
-            text = _corpus_reply() if r.kind == router.CORPUS else _smalltalk_reply()
+        # Smalltalk / corpus meta-question: canned deterministic reply, no trace.
+        if state["route_kind"] in (SMALLTALK, CORPUS):
             return RAGResult(
                 query=query,
-                answer=Answer(text=text, sources=[], refused=False),
+                answer=state["answer"],
                 retrieved=[],
                 strategy=self.strategy,
                 reranked=False,
-                route=r.kind,
+                route=state["route_kind"],
                 retriever=retriever,
             )
 
-        # PageIndex is a per-document retriever: it only applies when retrieval
-        # scopes to a single named filing. Comparison/unscoped queries fan out
-        # across documents, which tree-navigation does not do, so they fall back
-        # to the vector path. The retrieval-arm actually used is reported below.
-        use_pageindex = (
-            retriever == "pageindex"
-            and r.kind != router.COMPARISON
-            and len(r.tickers) == 1
-        )
-
-        t0 = time.perf_counter()
-        nav_path = ""
-        if use_pageindex:
-            top, nav_path, _reasoning = self.pageindex().retrieve(
-                query, r.tickers[0], top_k
-            )
-            reranked = False
-            t1 = t2 = time.perf_counter()
-        elif r.kind == router.COMPARISON:
-            # Comparison query: guarantee coverage with a per-company quota
-            # instead of a flat top-k that one company can monopolise. The
-            # cross-encoder is skipped here (see retrieve_per_ticker), so the
-            # rerank toggle does not apply.
-            # Floor of 5 per company: each filing's income-statement table can
-            # sit as low as rank ~4 behind residual XBRL/front-matter noise (worst
-            # case observed: AMZN total net sales at rank 4), so a smaller quota
-            # silently dropped companies from 4-5 ticker rankings.
-            per_company = max(5, -(-top_k // len(r.tickers)))  # ceil(top_k / n), min 5
-            top = self.retrieve_per_ticker(query, list(r.tickers), per_company=per_company)
-            reranked = False
-            t1 = t2 = time.perf_counter()
-        else:
-            # LEXICAL / SEMANTIC / HYBRID all run weighted hybrid retrieval; the
-            # router only shifts the dense/BM25 fusion weights (see router.route).
-            # When the router named exactly one company, scope retrieval to it so
-            # other companies' near-identical chunks can't crowd out the answer.
-            reranked = use_rerank
-            ticker = r.tickers[0] if len(r.tickers) == 1 else None
-            candidates = self.retrieve(
-                query,
-                config.RETRIEVE_K,
-                ticker=ticker,
-                dense_weight=r.dense_weight,
-                sparse_weight=r.sparse_weight,
-            )
-            t1 = time.perf_counter()
-            if use_rerank:
-                top = [c for c, _ in rerank(query, candidates, top_k)]
-            else:
-                top = candidates[:top_k]
-            t2 = time.perf_counter()
-        # Comparison context is grouped per company, not globally relevance-ranked,
-        # so skip the lost-in-the-middle reorder that would interleave the groups.
-        ans = generate(query, top, model=model, reorder=r.kind != router.COMPARISON)
-        t3 = time.perf_counter()
-
-        # Output guardrail: verify the answer's [n] citations point at real sources
-        # (catch invented references) and flag a substantive answer that cites
-        # nothing. Then append the standing not-advice / verify-against-source footer
-        # to grounded answers (skip refusals — the refusal text stands alone).
-        audit = guardrails.audit_citations(
-            ans.text, len(ans.sources), refused=ans.refused
-        )
-        if not ans.refused and ans.sources:
-            ans.text = guardrails.with_disclaimer(ans.text)
-
-        arm = "pageindex" if use_pageindex else "vector"
+        ans: Answer = state["answer"]
+        audit = state["audit"]
+        top = state["top"]
+        t0, t1, t2, t3 = state["t0"], state["t1"], state["t2"], state["t3"]
         trace = telemetry.QueryTrace(
             query=query,
             strategy=self.strategy,
-            reranked=reranked,
+            reranked=state["reranked"],
             refused=ans.refused,
-            route=f"{r.kind}/{arm}",
+            route=f"{state['route_kind']}/{state['arm']}",
             dangling_citations=audit.dangling,
             candidates=[{"chunk_id": c.chunk_id} for c in top],
             retrieval_ms=round((t1 - t0) * 1000, 1),
@@ -354,10 +313,10 @@ class RAGPipeline:
             answer=ans,
             retrieved=top,
             strategy=self.strategy,
-            reranked=reranked,
-            route=r.kind,
-            retriever=arm,
-            nav_path=nav_path,
+            reranked=state["reranked"],
+            route=state["route_kind"],
+            retriever=state["arm"],
+            nav_path=state.get("nav_path", ""),
             dangling_citations=audit.dangling,
             trace=trace,
         )

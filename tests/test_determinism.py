@@ -7,7 +7,6 @@ Claude (Opus 4.8), which removed the `seed`/`temperature` sampling knobs the old
 OpenAI path leaned on — so reproducibility now rests on the fixed prompt + model
 id, and these tests guard that the now-rejected sampling params are not sent.
 """
-import inspect
 import random
 
 import pytest
@@ -76,8 +75,10 @@ def test_rerank_ties_break_by_chunk_id(monkeypatch):
 def test_chat_model_is_offered_and_routes_to_a_provider():
     # The headless default (CHAT_MODEL) must be a model we actually offer, and it
     # must resolve to a known provider so generation can dispatch.
-    assert config.CHAT_MODEL in set(config.ANTHROPIC_CHAT_MODELS + config.OPENAI_CHAT_MODELS)
-    assert config.model_provider(config.CHAT_MODEL) in ("anthropic", "openai")
+    assert config.CHAT_MODEL in set(
+        config.ANTHROPIC_CHAT_MODELS + config.OPENAI_CHAT_MODELS + config.NEBIUS_CHAT_MODELS
+    )
+    assert config.model_provider(config.CHAT_MODEL) in ("anthropic", "openai", "nebius")
 
 
 def test_available_chat_models_puts_default_first_when_present():
@@ -92,6 +93,11 @@ def test_model_provider_routes_by_name_and_rejects_unknown():
     assert config.model_provider("claude-opus-4-8") == "anthropic"
     assert config.model_provider("gpt-4o") == "openai"
     assert config.model_provider("o3-mini") == "openai"
+    # Nebius: list membership wins (even for an "openai/..."-prefixed open-weight
+    # id), and the HF-style "org/model" heuristic covers env-added models.
+    assert config.model_provider("meta-llama/Llama-3.3-70B-Instruct") == "nebius"
+    assert config.model_provider("openai/gpt-oss-120b") == "nebius"
+    assert config.model_provider("Qwen/Qwen3-32B") == "nebius"
     with pytest.raises(ValueError):
         config.model_provider("mystery-model-9")
 
@@ -102,17 +108,15 @@ def test_judge_model_differs_from_generation_model():
     assert config.JUDGE_MODEL != config.CHAT_MODEL
 
 
-def test_generation_sends_no_rejected_sampling_params():
+def test_generation_sends_no_rejected_sampling_params(monkeypatch):
     # Opus 4.8 returns 400 if temperature/top_p/top_k/seed are sent; guard against
-    # any of them creeping back into the *Anthropic* generation call. (The OpenAI
-    # arm pins temperature/seed on purpose, so it is intentionally not checked.)
+    # any of them creeping into the Anthropic chat-model construction. (The
+    # OpenAI/Nebius arms pin temperature/seed on purpose, so they are not checked.)
     from src import generate
 
-    # Strip comments so the explanatory note ("rejects temperature/seed") doesn't
-    # trip the check; we only care about actual keyword arguments (`param=`).
-    src = inspect.getsource(generate._chat_anthropic)
-    code = "\n".join(line.split("#", 1)[0] for line in src.splitlines())
-    for banned in ("temperature=", "top_p=", "top_k=", "seed="):
-        assert banned not in code, (
-            f"_chat_anthropic must not send {banned} (400 on Opus 4.8)"
-        )
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "test-key")
+    m = generate._make_chat_model("anthropic", "claude-opus-4-8")
+    assert m.temperature is None, "must not send temperature (400 on Opus 4.8)"
+    assert m.top_p is None, "must not send top_p (400 on Opus 4.8)"
+    assert m.top_k is None, "must not send top_k (400 on Opus 4.8)"
+    assert not getattr(m, "model_kwargs", {}), "no extra sampling params (e.g. seed)"

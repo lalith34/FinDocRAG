@@ -1,0 +1,392 @@
+[
+  {
+    "id": "qb012",
+    "category": "lexical",
+    "question": "Third-party seller services revenue",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "third-party seller"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb014",
+    "category": "lexical",
+    "question": "Advertising services revenue",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "advertising"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb018",
+    "category": "lexical",
+    "question": "Google Search and other revenue",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google search"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb032",
+    "category": "hybrid",
+    "question": "What is included in the More Personal Computing segment?",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "more personal computing"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb042",
+    "category": "hybrid",
+    "question": "What makes up Google Services revenue?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "google services"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb044",
+    "category": "hybrid",
+    "question": "How much is Alphabet investing in AI infrastructure?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "ai"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb048",
+    "category": "hybrid",
+    "question": "How did Gaming revenue trend this year?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "gaming"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb065",
+    "category": "comprehensive",
+    "question": "Provide an overview of Amazon's major investment and growth areas.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "invest"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb070",
+    "category": "comprehensive",
+    "question": "Provide an overview of Other Bets and Alphabet's long-term investments.",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "other bets"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb076",
+    "category": "semantic",
+    "question": "Why does Apple believe its ecosystem keeps customers loyal?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "customer"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb078",
+    "category": "semantic",
+    "question": "What is Apple's philosophy on user privacy and data?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "privacy"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb080",
+    "category": "semantic",
+    "question": "What does Apple say about its environmental responsibility commitments?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "environ"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb090",
+    "category": "semantic",
+    "question": "How does Amazon describe the role of its culture and workforce?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "employee"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb101",
+    "category": "analytics",
+    "question": "Calculate the year-over-year growth rate of Apple's total net sales and identify the largest contributor.",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "net sales"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb104",
+    "category": "analytics",
+    "question": "What share of total net sales did each geographic segment represent in 2025?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb105",
+    "category": "analytics",
+    "question": "How did Apple's effective tax rate change year over year, and why?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "effective tax"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb111",
+    "category": "analytics",
+    "question": "Compare the operating margins of North America, International, and AWS.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb123",
+    "category": "analytics",
+    "question": "What share of total revenue does each market platform represent?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "revenue"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb124",
+    "category": "analytics",
+    "question": "Compare the growth rates of the Compute and Networking and Graphics segments.",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "segment"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb142",
+    "category": "problems",
+    "question": "What regulatory and antitrust risks does Alphabet report?",
+    "expected_tickers": [
+      "GOOGL"
+    ],
+    "must_contain": [
+      "regulat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb005",
+    "category": "lexical",
+    "question": "Research and development expense 2025",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "research and development"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb027",
+    "category": "hybrid",
+    "question": "What drove the change in Services revenue?",
+    "expected_tickers": [
+      "AAPL"
+    ],
+    "must_contain": [
+      "services"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb063",
+    "category": "comprehensive",
+    "question": "Describe Amazon's overall financial performance for 2025.",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "operating income"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb089",
+    "category": "semantic",
+    "question": "What is Amazon's strategy for innovation and experimentation?",
+    "expected_tickers": [
+      "AMZN"
+    ],
+    "must_contain": [
+      "innovat"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "qb122",
+    "category": "analytics",
+    "question": "How did NVIDIA's gross margin change year over year, and why?",
+    "expected_tickers": [
+      "NVDA"
+    ],
+    "must_contain": [
+      "gross margin"
+    ],
+    "expect_refusal": false
+  },
+  {
+    "id": "M5",
+    "category": "Medium",
+    "question": "Which Microsoft reportable segment had the highest operating margin in fiscal 2025? Calculate operating income divided by revenue for each segment.",
+    "expected_tickers": [
+      "MSFT"
+    ],
+    "must_contain": [
+      "operating income",
+      "segment"
+    ],
+    "reference": "Productivity and Business Processes had the highest margin (~57.8%); Intelligent Cloud ~42.0%; More Personal Computing ~25.9%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H2",
+    "category": "High",
+    "question": "Rank the five companies by net income. Does the ranking match the revenue ranking?",
+    "expected_tickers": [
+      "MSFT",
+      "AMZN",
+      "GOOGL",
+      "AAPL",
+      "NVDA"
+    ],
+    "must_contain": [
+      "net income"
+    ],
+    "reference": "Net income: GOOG $132.170B, NVDA $120.067B, AAPL $112.010B, MSFT $101.832B, AMZN $77.670B. The ranking does NOT match revenue ranking; Amazon has the highest revenue but the lowest net income of the five.",
+    "expect_refusal": false
+  },
+  {
+    "id": "H4",
+    "category": "High",
+    "question": "For each company, identify its largest disclosed revenue bucket and calculate what percentage of total revenue it represents.",
+    "expected_tickers": [
+      "MSFT",
+      "AMZN",
+      "GOOGL",
+      "AAPL",
+      "NVDA"
+    ],
+    "must_contain": [
+      "segment",
+      "net sales",
+      "revenues"
+    ],
+    "reference": "Largest bucket as a share of revenue: MSFT Productivity and Business Processes ~42.9%; AMZN North America ~59.5%; GOOG Google Services ~85.1%; AAPL iPhone ~50.4%; NVDA Data Center ~89.7%.",
+    "expect_refusal": false
+  },
+  {
+    "id": "A3",
+    "category": "Advanced",
+    "question": "Which company had net income greater than operating income, and what filing items explain that result?",
+    "expected_tickers": [
+      "MSFT",
+      "AMZN",
+      "GOOGL",
+      "AAPL",
+      "NVDA"
+    ],
+    "must_contain": [
+      "other income",
+      "net income",
+      "operating income"
+    ],
+    "reference": "Alphabet/GOOG: operating income was $129.039B while net income was $132.170B, explained by Other income including ~$29.787B of other income and a ~$24.080B gain on equity securities (before tax effects).",
+    "expect_refusal": false
+  },
+  {
+    "id": "q30",
+    "question": "What is the personal cell phone number of Apple's CEO?",
+    "expected_tickers": [],
+    "must_contain": [],
+    "expect_refusal": true
+  },
+  {
+    "id": "q31",
+    "question": "What were Tesla's vehicle deliveries for the most recent year?",
+    "expected_tickers": [],
+    "must_contain": [],
+    "expect_refusal": true
+  },
+  {
+    "id": "q32",
+    "question": "What revenue does Apple forecast for the next five years?",
+    "expected_tickers": [],
+    "must_contain": [],
+    "expect_refusal": true
+  }
+]

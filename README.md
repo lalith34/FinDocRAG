@@ -14,18 +14,20 @@ plus an evaluation report and a chatbot UI.
 | Component | Technology | Why |
 |---|---|---|
 | **Language / runtime** | Python 3 | ecosystem for RAG, NLP, and data tooling |
+| **Orchestration** | LangGraph (`StateGraph`) | the query flow — guard → route → retrieve → rerank → generate → audit — is a compiled state machine with conditional edges ([src/graph.py](src/graph.py)) |
+| **Model I/O** | LangChain (`ChatAnthropic` / `ChatOpenAI`) | one wrapper interface over all three generation providers; Nebius rides ChatOpenAI with a custom base_url |
 | **UI** | Streamlit | a chat interface in pure Python — answer-model dropdown, sources, live cost/latency |
 | **Ingestion** | SEC EDGAR API + BeautifulSoup / lxml | pull the latest 10-K and clean it (table-aware HTML → pipe-delimited rows) |
 | **Embeddings** | OpenAI `text-embedding-3-small` (1536-dim) | strong, stable dense vectors; on-disk cache makes builds reproducible & free once warm |
 | **Vector DB** | Pinecone (serverless, cosine) | managed dense retrieval; one namespace per chunking strategy |
 | **Sparse + hybrid** | BM25 (`rank_bm25`) + Reciprocal Rank Fusion | catches exact matches (tickers, line items) dense search misses; RRF fuses both |
 | **Reranker** | ONNX cross-encoder via `fastembed` (no torch) | precise top-k reorder that runs locally — no GPU, works on Intel macOS |
-| **Generation** | Anthropic (default `claude-opus-4-8`) **or** OpenAI (`gpt-4o`, …) | multi-provider, switchable per query; cited, grounded answers with a refusal path |
+| **Generation** | Anthropic (default `claude-opus-4-8`), OpenAI (`gpt-4o`, …), **or** Nebius Token Factory (`meta-llama/Llama-3.3-70B-Instruct`, …) | multi-provider, switchable per query; cited, grounded answers with a refusal path |
 | **Guardrails** | Custom rule-based (no extra LLM call) | input injection/advice/length screening + output citation auditing |
 | **Tokenization** | `tiktoken` | token-accurate chunk sizing and batching |
 | **Evaluation** | Custom harness (Hit@k, MRR, NDCG, Precision) + LLM judge + RAGAS | chunking comparison + reranking impact, the graded deliverables |
 | **Reliability** | `tenacity` | retry/backoff around SEC, OpenAI, and Pinecone calls |
-| **Testing / CI** | `pytest` + GitHub Actions | 136 offline unit tests on every push |
+| **Testing / CI** | `pytest` + GitHub Actions | 142 offline unit tests on every push |
 
 > The **Framework** table below maps the same pieces onto the RAG pipeline stages
 > (use case → corpus → ingest → chunk → embed → retrieve → rerank → generate →
@@ -42,7 +44,7 @@ plus an evaluation report and a chatbot UI.
 | **Embedding** | OpenAI `text-embedding-3-small` (1536-dim) with on-disk cache |
 | **Retrieve** | **Pinecone** serverless index (dense cosine, one namespace per strategy) + local BM25 sparse, fused with RRF; top-k=5 from a 20-candidate pool |
 | **Rerank** | Local **ONNX cross-encoder** (`fastembed`, no torch) reranks the candidate pool; impact measured in the eval |
-| **Generate** | Multi-provider — Anthropic (default `claude-opus-4-8`) or OpenAI (`gpt-4o`, …), chosen per query; cite-everything prompt, **explicit refusal** when context is insufficient. The chatbot lets you pick the answer model. |
+| **Generate** | Multi-provider — Anthropic (default `claude-opus-4-8`), OpenAI (`gpt-4o`, …), or open-source models via Nebius Token Factory (`meta-llama/Llama-3.3-70B-Instruct`, …), chosen per query; cite-everything prompt, **explicit refusal** when context is insufficient. The chatbot lets you pick the answer model. |
 | **Guardrails** | Deterministic, rule-based (no extra LLM call) — **input**: blocks prompt-injection / instruction-extraction, deflects investment-advice solicitation, caps query length; **output**: audits every `[n]` citation against real sources (flags invented references + ungrounded answers), appends a not-advice disclaimer. See [src/guardrails.py](src/guardrails.py). |
 
 ## Setup
@@ -56,8 +58,11 @@ cp .env.example .env        # then add your OPENAI_API_KEY and PINECONE_API_KEY
 ```
 
 Required keys (see [.env.example](.env.example)): `OPENAI_API_KEY` (embeddings +
-generation), `PINECONE_API_KEY` (dense vector store). The reranker runs locally
-from a one-time ~90MB ONNX model download, no key needed.
+generation), `PINECONE_API_KEY` (dense vector store). Optional: `ANTHROPIC_API_KEY`
+(Claude answer models + LLM judge) and `NEBIUS_API_KEY` (open-source answer models
+via Nebius Token Factory) — each key adds its provider's models to the answer-model
+dropdown. The reranker runs locally from a one-time ~90MB ONNX model download, no
+key needed.
 
 ## Run
 

@@ -133,7 +133,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")  # 1536-dim
 EMBED_DIM = 1536
 
-# --- Generation + judge (Anthropic or OpenAI) --------------------------------
+# --- Generation + judge (Anthropic, OpenAI, or Nebius) -----------------------
 # Generation runs on whichever provider's key is configured; the model is chosen
 # per query (UI dropdown / CLI flag). The LLM judge runs on a SEPARATE, lighter
 # Claude model so it (a) draws from a different per-model rate-limit bucket
@@ -163,22 +163,40 @@ OPENAI_CHAT_MODELS = [
         "gpt-4o,gpt-4o-mini,gpt-4.1,gpt-4.1-mini",
     ).split(",") if m.strip()
 ]
+# Nebius Token Factory serves open-source models behind an OpenAI-compatible API,
+# so its arm reuses the OpenAI client with a different base_url. Model ids are
+# HuggingFace-style ("org/model"), which is also how the provider heuristic
+# recognises them.
+NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY")
+NEBIUS_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1/")
+NEBIUS_CHAT_MODELS = [
+    m.strip() for m in os.getenv(
+        "NEBIUS_CHAT_MODELS",
+        "meta-llama/Llama-3.3-70B-Instruct,openai/gpt-oss-120b",
+    ).split(",") if m.strip()
+]
 # Note: Opus 4.8/4.7 reject temperature/top_p/seed (they 400), so the Anthropic
 # arm is no longer pinned by a sampling seed; reproducibility there rests on the
 # fixed prompt + model id. The OpenAI arm pins temperature=0 for stability.
 
 
 def model_provider(model: str) -> str:
-    """Return 'anthropic' or 'openai' for a chat model id. Falls back to a name
-    heuristic so models added via the *_CHAT_MODELS env override still route."""
+    """Return 'anthropic', 'openai', or 'nebius' for a chat model id. Falls back
+    to a name heuristic so models added via the *_CHAT_MODELS env override still
+    route. The lists win over heuristics so an id like "openai/gpt-oss-120b"
+    (an open-weight model served by Nebius) routes by membership, not name."""
     if model in ANTHROPIC_CHAT_MODELS:
         return "anthropic"
     if model in OPENAI_CHAT_MODELS:
         return "openai"
+    if model in NEBIUS_CHAT_MODELS:
+        return "nebius"
     if model.startswith("claude"):
         return "anthropic"
     if model.startswith(("gpt-", "o1", "o3", "o4", "chatgpt")):
         return "openai"
+    if "/" in model:  # HuggingFace-style "org/model" id => open-source via Nebius
+        return "nebius"
     raise ValueError(f"Unknown chat model {model!r}; set its provider via *_CHAT_MODELS")
 
 
@@ -191,6 +209,8 @@ def available_chat_models() -> list[str]:
         models += ANTHROPIC_CHAT_MODELS
     if OPENAI_API_KEY:
         models += OPENAI_CHAT_MODELS
+    if NEBIUS_API_KEY:
+        models += NEBIUS_CHAT_MODELS
     if CHAT_MODEL in models:
         models = [CHAT_MODEL] + [m for m in models if m != CHAT_MODEL]
     return models
@@ -209,6 +229,9 @@ MODEL_PRICES = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4.1-mini": (0.40, 1.60),
+    # Nebius Token Factory (open-source models)
+    "meta-llama/Llama-3.3-70B-Instruct": (0.13, 0.40),
+    "openai/gpt-oss-120b": (0.15, 0.60),
     # Embeddings
     "text-embedding-3-small": (0.02, 0.0),
 }

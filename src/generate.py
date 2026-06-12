@@ -10,14 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from langchain_core.messages import HumanMessage, SystemMessage
+
 import config
 from .chunking import Chunk
-from .reliability import (
-    anthropic_retry,
-    make_anthropic_client,
-    make_openai_client,
-    openai_retry,
-)
+from .reliability import ANTHROPIC_TIMEOUT, OPENAI_TIMEOUT, anthropic_retry, openai_retry
 
 _SYSTEM = f"""You are a financial analyst assistant. You answer questions ONLY \
 using the SOURCES provided, which are excerpts from companies' SEC 10-K (annual) \
@@ -92,17 +89,81 @@ class Answer:
             self.usage = {}
 
 
-# One cached client per provider, built lazily so a missing key only errors when
-# that provider is actually used (the other arm still works).
-_clients: dict[str, object] = {}
+# One cached LangChain chat model per (provider, model id), built lazily so a
+# missing key only errors when that provider is actually used (the other arms
+# still work). max_retries=0 everywhere: tenacity owns the retry policy.
+_chat_models: dict[tuple[str, str], object] = {}
 
 
-def _get_client(provider: str):
-    if provider not in _clients:
-        _clients[provider] = (
-            make_anthropic_client() if provider == "anthropic" else make_openai_client()
+def _make_chat_model(provider: str, model: str):
+    if provider == "anthropic":
+        if not config.ANTHROPIC_API_KEY:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is not set. Add it to your .env "
+                "(see .env.example) to answer with Claude models."
+            )
+        from langchain_anthropic import ChatAnthropic
+
+        # No temperature/seed: Opus 4.8/4.7 reject them (they 400), so
+        # determinism on this arm rests on the fixed prompt + pinned model id.
+        return ChatAnthropic(
+            model=model,
+            api_key=config.ANTHROPIC_API_KEY,
+            max_tokens=config.GEN_MAX_TOKENS,
+            timeout=ANTHROPIC_TIMEOUT,
+            max_retries=0,
         )
-    return _clients[provider]
+
+    from langchain_openai import ChatOpenAI
+
+    if provider == "nebius":
+        # Nebius Token Factory is OpenAI-compatible: same wrapper, different
+        # base_url. vLLM-backed, so temperature + seed are honored.
+        if not config.NEBIUS_API_KEY:
+            raise RuntimeError(
+                "NEBIUS_API_KEY is not set. Add it to your .env (see .env.example) "
+                "to answer with Nebius Token Factory models."
+            )
+        return ChatOpenAI(
+            model=model,
+            api_key=config.NEBIUS_API_KEY,
+            base_url=config.NEBIUS_BASE_URL,
+            max_tokens=config.GEN_MAX_TOKENS,
+            temperature=0,
+            seed=0,
+            timeout=OPENAI_TIMEOUT,
+            max_retries=0,
+        )
+
+    if not config.OPENAI_API_KEY:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Copy .env.example to .env and add your key."
+        )
+    if model.startswith(("o1", "o3", "o4")):
+        # Reasoning models reject temperature/seed and use max_completion_tokens.
+        return ChatOpenAI(
+            model=model,
+            api_key=config.OPENAI_API_KEY,
+            model_kwargs={"max_completion_tokens": config.GEN_MAX_TOKENS},
+            timeout=OPENAI_TIMEOUT,
+            max_retries=0,
+        )
+    return ChatOpenAI(
+        model=model,
+        api_key=config.OPENAI_API_KEY,
+        max_tokens=config.GEN_MAX_TOKENS,
+        temperature=0,
+        seed=0,  # best-effort determinism on the OpenAI arm
+        timeout=OPENAI_TIMEOUT,
+        max_retries=0,
+    )
+
+
+def _get_chat_model(provider: str, model: str):
+    key = (provider, model)
+    if key not in _chat_models:
+        _chat_models[key] = _make_chat_model(provider, model)
+    return _chat_models[key]
 
 
 def _order_for_context(chunks: list[Chunk]) -> list[Chunk]:
@@ -131,63 +192,63 @@ def _build_sources(chunks: list[Chunk]) -> list[Source]:
     ]
 
 
-# Both arms return a normalized (text, usage) tuple so generate() is provider-blind.
+# All arms return a normalized (text, usage) tuple so generate() is provider-blind.
+# Every provider goes through a LangChain chat model (ChatAnthropic / ChatOpenAI);
+# Nebius Token Factory is OpenAI-compatible, so it shares the ChatOpenAI wrapper
+# with its own base_url. The tenacity decorators still own retries — LangChain
+# wrappers re-raise the underlying SDK's exceptions, which is what they catch.
 def _chat(system: str, user: str, model: str) -> tuple[str, dict]:
     provider = config.model_provider(model)
     if provider == "anthropic":
-        return _chat_anthropic(system, user, model)
-    return _chat_openai(system, user, model)
+        return _invoke_anthropic(system, user, model)
+    return _invoke_openai_compatible(system, user, model, provider)
+
+
+def _normalize_response(msg, provider: str) -> tuple[str, dict]:
+    """Map a LangChain AIMessage onto the (text, usage) contract telemetry and
+    cost estimation expect, regardless of provider."""
+    content = msg.content
+    if isinstance(content, list):  # Anthropic can return content blocks
+        content = "".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in content
+        )
+    meta = getattr(msg, "response_metadata", {}) or {}
+    tokens = getattr(msg, "usage_metadata", None) or {}
+    usage = {
+        "prompt_tokens": tokens.get("input_tokens", 0),
+        "completion_tokens": tokens.get("output_tokens", 0),
+        # OpenAI exposes a system_fingerprint; Anthropic/Nebius record the
+        # resolved model id instead (reproducibility provenance).
+        "system_fingerprint": meta.get("system_fingerprint")
+        or meta.get("model")
+        or meta.get("model_name"),
+    }
+    return content.strip(), usage
 
 
 @anthropic_retry
-def _chat_anthropic(system: str, user: str, model: str) -> tuple[str, dict]:
-    # Claude takes the system prompt as a top-level arg (not a message role) and
-    # Opus 4.8/4.7 reject temperature/seed, so determinism rests on prompt + model.
-    resp = _get_client("anthropic").messages.create(
-        model=model,
-        max_tokens=config.GEN_MAX_TOKENS,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+def _invoke_anthropic(system: str, user: str, model: str) -> tuple[str, dict]:
+    msg = _get_chat_model("anthropic", model).invoke(
+        [SystemMessage(content=system), HumanMessage(content=user)]
     )
-    text = "".join(b.text for b in resp.content if b.type == "text").strip()
-    usage = {
-        # Map Anthropic's input/output token counts onto the same keys telemetry
-        # and cost estimation already expect.
-        "prompt_tokens": getattr(resp.usage, "input_tokens", 0),
-        "completion_tokens": getattr(resp.usage, "output_tokens", 0),
-        # Anthropic has no system_fingerprint; record the resolved model id instead.
-        "system_fingerprint": getattr(resp, "model", None),
-    }
-    return text, usage
+    return _normalize_response(msg, "anthropic")
 
 
 @openai_retry
-def _chat_openai(system: str, user: str, model: str) -> tuple[str, dict]:
-    # OpenAI takes the system prompt as a message role. Pin temperature=0 for
-    # stable answers; the o-series reasoning models reject temperature, so omit it
-    # there. Reasoning models also use max_completion_tokens instead of max_tokens.
-    is_reasoning = model.startswith(("o1", "o3", "o4"))
-    kwargs: dict = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
-    if is_reasoning:
-        kwargs["max_completion_tokens"] = config.GEN_MAX_TOKENS
-    else:
-        kwargs["max_tokens"] = config.GEN_MAX_TOKENS
-        kwargs["temperature"] = 0
-        kwargs["seed"] = 0  # best-effort determinism on the OpenAI arm
-    resp = _get_client("openai").chat.completions.create(**kwargs)
-    text = (resp.choices[0].message.content or "").strip()
-    usage = {
-        "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0),
-        "completion_tokens": getattr(resp.usage, "completion_tokens", 0),
-        "system_fingerprint": getattr(resp, "system_fingerprint", None),
-    }
-    return text, usage
+def _invoke_openai_compatible(
+    system: str, user: str, model: str, provider: str
+) -> tuple[str, dict]:
+    msg = _get_chat_model(provider, model).invoke(
+        [SystemMessage(content=system), HumanMessage(content=user)]
+    )
+    return _normalize_response(msg, provider)
+
+
+def _normalize_citations(text: str) -> str:
+    """Rewrite fullwidth citation brackets (【2】) to ASCII ([2]). Some open-weight
+    models (e.g. gpt-oss via Nebius) emit the CJK form, which the citation audit
+    and the UI's [n] markers would otherwise miss."""
+    return text.replace("【", "[").replace("】", "]")
 
 
 def generate(
@@ -217,5 +278,6 @@ def generate(
     )
 
     text, usage = _chat(_SYSTEM, user, model)
+    text = _normalize_citations(text)
     refused = config.REFUSAL_TEXT.lower() in text.lower()
     return Answer(text=text, sources=sources, refused=refused, usage=usage)

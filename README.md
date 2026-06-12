@@ -50,8 +50,8 @@ plus an evaluation report and a chatbot UI.
 ## Setup
 
 ```bash
-cd Week_2_Fintech_Project
-python3 -m venv .venv && source .venv/bin/activate
+cd FinDocRAG
+python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env        # then add your OPENAI_API_KEY and PINECONE_API_KEY

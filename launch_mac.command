@@ -44,7 +44,7 @@ fi
 echo
 echo "Launching the app… a browser tab will open. Press Ctrl+C here to stop."
 echo
-streamlit run app.py
+.venv/bin/streamlit run app.py
 
 # Keep the Terminal window open if Streamlit exits/errors.
 echo

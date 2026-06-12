@@ -25,8 +25,8 @@ plus an evaluation report and a chatbot UI.
 | **Generation** | Anthropic (default `claude-opus-4-8`), OpenAI (`gpt-4o`, …), **or** Nebius Token Factory (`meta-llama/Llama-3.3-70B-Instruct`, …) | multi-provider, switchable per query; cited, grounded answers with a refusal path |
 | **Guardrails** | Custom rule-based (no extra LLM call) | input injection/advice/length screening + output citation auditing |
 | **Tokenization** | `tiktoken` | token-accurate chunk sizing and batching |
-| **Evaluation** | Custom harness (Hit@k, MRR, NDCG, Precision) + LLM judge + RAGAS | chunking comparison + reranking impact, the graded deliverables |
-| **Reliability** | `tenacity` | retry/backoff around SEC, OpenAI, and Pinecone calls |
+| **Evaluation** | Custom harness (Hit@k, MRR, NDCG, Precision) + LLM judge + RAGAS | chunking comparison + reranking impact (the graded deliverables), plus an adversarial hard set with a written [failure analysis](eval/FAILURE_ANALYSIS.md) |
+| **Reliability** | `tenacity` | retry/backoff around SEC, OpenAI, Anthropic, Nebius, and Pinecone calls |
 | **Testing / CI** | `pytest` + GitHub Actions | 142 offline unit tests on every push |
 
 > The **Framework** table below maps the same pieces onto the RAG pipeline stages
